@@ -1,0 +1,1 @@
+# elementor-static-content-embedder
