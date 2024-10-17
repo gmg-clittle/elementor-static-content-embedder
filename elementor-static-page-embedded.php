@@ -1,8 +1,8 @@
 <?php
 /*
-Plugin Name: Elementor Static Content Embedder
-Description: Converts Elementor pages to static HTML/CSS/JS using wp_remote_get, saves them in the database, and provides an admin interface for managing and embedding them.
-Version: 1.6
+Plugin Name: Elementor Static Content Embedder with Logging
+Description: Converts Elementor pages to static HTML/CSS/JS using wp_remote_get, saves them in the database, and provides an admin interface for managing and embedding them. Also includes logging for generation events.
+Version: 1.8
 Author: Garber Digital Marketing Team
 */
 
@@ -20,10 +20,11 @@ function esc_create_admin_menu() {
     );
 }
 
-// Admin page content to generate and display static pages
+// Admin page content to generate and display static pages and logs
 function esc_admin_page() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'elementor_static_content';
+    $log_table_name = $wpdb->prefix . 'elementor_static_content_logs';
 
     // Process form submission for generating static page
     if (isset($_POST['generate_static'])) {
@@ -36,6 +37,7 @@ function esc_admin_page() {
 
     // Fetch stored static pages from the database
     $static_pages = $wpdb->get_results("SELECT * FROM $table_name");
+    $logs = $wpdb->get_results("SELECT * FROM $log_table_name ORDER BY created_at DESC LIMIT 50");
 
     ?>
     <div class="wrap">
@@ -89,15 +91,46 @@ function esc_admin_page() {
                 } ?>
             </tbody>
         </table>
+
+        <h2>Log Events</h2>
+        <table class="widefat fixed" cellspacing="0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Event Type</th>
+                    <th>Page ID</th>
+                    <th>Message</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (!empty($logs)) {
+                    foreach ($logs as $log) {
+                        ?>
+                        <tr>
+                            <td><?php echo esc_html($log->id); ?></td>
+                            <td><?php echo esc_html($log->event_type); ?></td>
+                            <td><?php echo esc_html($log->page_id); ?></td>
+                            <td><?php echo esc_html($log->message); ?></td>
+                            <td><?php echo esc_html($log->created_at); ?></td>
+                        </tr>
+                        <?php
+                    }
+                } else {
+                    echo '<tr><td colspan="5">No log events yet.</td></tr>';
+                } ?>
+            </tbody>
+        </table>
     </div>
     <?php
 }
 
-// Function to extract and save static content including CSS/JS
+// Function to extract and save static content including CSS/JS and log events
 function esc_generate_static_content($page_id, $auto_trigger = false) {
     global $wpdb;
     $page = get_post($page_id);
     if (!$page || $page->post_status !== 'publish') {
+        esc_log_event('error', $page_id, 'Invalid page selected.');
         if (!$auto_trigger) {
             echo '<div class="notice notice-error"><p>Invalid page selected.</p></div>';
         }
@@ -108,6 +141,7 @@ function esc_generate_static_content($page_id, $auto_trigger = false) {
     $page_url = get_permalink($page_id);
     $response = wp_remote_get($page_url);
     if (is_wp_error($response)) {
+        esc_log_event('error', $page_id, 'Error fetching page: ' . $response->get_error_message());
         if (!$auto_trigger) {
             echo '<div class="notice notice-error"><p>Error fetching page: ' . $response->get_error_message() . '</p></div>';
         }
@@ -152,14 +186,22 @@ function esc_generate_static_content($page_id, $auto_trigger = false) {
         ['%d', '%s', '%s', '%s', '%s', '%s', '%s']
     );
 
+    // Log the generation event
+    esc_log_event('generation', $page_id, 'Static content generated successfully.');
+
     if (!$auto_trigger) {
         echo '<div class="notice notice-success"><p>Static page generated and saved successfully. Add this div ID: <strong>' . $elementor_div_id . '</strong> to your dealership site.</p></div>';
     }
 }
 
-// Automatically regenerate static content when a page is updated
+// Function to trigger static content regeneration on page update
 add_action('save_post', 'esc_auto_generate_static_content', 10, 2);
 function esc_auto_generate_static_content($post_id, $post) {
+    // Check if this is a revision or an autosave, and bail if it is
+    if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
+        return;
+    }
+
     // Ensure it's an Elementor page that we care about, and it's a published page
     if ($post->post_type === 'page' && $post->post_status === 'publish') {
         global $wpdb;
@@ -168,20 +210,40 @@ function esc_auto_generate_static_content($post_id, $post) {
         // Check if the page has already been generated as static content
         $static_page = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE page_id = %d", $post_id));
 
-        // If it exists in the database, regenerate the static content
+        // If it exists in the database, regenerate the static content only once
         if ($static_page) {
             esc_generate_static_content($post_id, true); // Regenerate the content using the existing function
+            esc_log_event('auto-regenerate', $post_id, 'Static content auto-regenerated on page update.');
         }
     }
 }
 
-// Create and update database table for storing static content
+// Function to log events to the database
+function esc_log_event($event_type, $page_id, $message) {
+    global $wpdb;
+    $log_table_name = $wpdb->prefix . 'elementor_static_content_logs';
+
+    $wpdb->insert(
+        $log_table_name,
+        [
+            'event_type' => $event_type,
+            'page_id' => $page_id,
+            'message' => $message,
+            'created_at' => current_time('mysql')
+        ],
+        ['%s', '%d', '%s', '%s']
+    );
+}
+
+// Create and update database table for storing static content and logs
 register_activation_hook(__FILE__, 'esc_create_db');
 function esc_create_db() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'elementor_static_content';
+    $log_table_name = $wpdb->prefix . 'elementor_static_content_logs';
     $charset_collate = $wpdb->get_charset_collate();
 
+    // Create static content table
     $sql = "CREATE TABLE IF NOT EXISTS $table_name (
         id mediumint(9) NOT NULL AUTO_INCREMENT,
         page_id bigint(20) NOT NULL,
@@ -194,9 +256,19 @@ function esc_create_db() {
         PRIMARY KEY  (id),
         UNIQUE (page_id)
     ) $charset_collate;";
-
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
+
+    // Create logs table
+    $sql_log = "CREATE TABLE IF NOT EXISTS $log_table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        event_type varchar(50) NOT NULL,
+        page_id bigint(20) NOT NULL,
+        message text NOT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY  (id)
+    ) $charset_collate;";
+    dbDelta($sql_log);
 }
 
 // Uninstall hook to remove database table on plugin removal
@@ -204,7 +276,9 @@ register_uninstall_hook(__FILE__, 'esc_remove_db');
 function esc_remove_db() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'elementor_static_content';
+    $log_table_name = $wpdb->prefix . 'elementor_static_content_logs';
     $wpdb->query("DROP TABLE IF EXISTS $table_name");
+    $wpdb->query("DROP TABLE IF EXISTS $log_table_name");
 }
 
 // API route to serve static content
@@ -245,4 +319,3 @@ function esc_get_static_content($data) {
         'notes' => $static_page->notes
     );
 }
-?>
