@@ -11,11 +11,11 @@ add_action('admin_menu', 'esc_create_admin_menu');
 function esc_create_admin_menu() {
     add_menu_page(
         'Elementor Static Content',  // Page title
-        'Static Content',            // Menu title
+        'GMG Digital - Elementor Exporter',            // Menu title
         'manage_options',            // Capability
         'static-content-generator',  // Menu slug
         'esc_admin_page',            // Callback function
-        'dashicons-admin-generic',   // Icon
+        'dashicons-car',   // Icon
         100                          // Position
     );
 }
@@ -77,7 +77,7 @@ function esc_admin_page() {
                             <td><?php echo esc_html(get_the_title($static_page->page_id)); ?></td>
                             <td><?php echo esc_html($static_page->elementor_div_id); ?></td>
                             <td>
-                                <textarea readonly><?php echo esc_html('<div id="' . $static_page->elementor_div_id . '"></div>'); ?></textarea>
+<textarea readonly><?php echo esc_html('<div class="elementor-content" data-elementor-id="' . str_replace('elementor-', '', $static_page->elementor_div_id) . '"></div><style>.loading-container{display:flex;justify-content:center;align-items:center;padding:20px;margin-bottom:20px;height:200px}.loading-iframe{width:100%;height:100px;border:none}</style><div class="loading-container"><iframe class="loading-iframe" src="https://gmg-digital.vercel.app/loading-widget"></iframe></div>'); ?></textarea>
                             </td>
                             <td><?php echo esc_html($static_page->generated_at); ?></td>
                             <td>
@@ -187,21 +187,18 @@ function esc_generate_static_content($page_id, $auto_trigger = false) {
     );
 
     // Log the generation event
-    esc_log_event('generation', $page_id, 'Static content generated successfully.');
+    $trigger_type = $auto_trigger ? 'auto-generation' : 'manual-generation';
+    esc_log_event('generation', $page_id, "Static content $trigger_type triggered and generated successfully.");
 
     if (!$auto_trigger) {
         echo '<div class="notice notice-success"><p>Static page generated and saved successfully. Add this div ID: <strong>' . $elementor_div_id . '</strong> to your dealership site.</p></div>';
     }
 }
 
+
 // Function to trigger static content regeneration on page update
 add_action('save_post', 'esc_auto_generate_static_content', 10, 2);
 function esc_auto_generate_static_content($post_id, $post) {
-    // Check if this is a revision or an autosave, and bail if it is
-    if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
-        return;
-    }
-
     // Ensure it's an Elementor page that we care about, and it's a published page
     if ($post->post_type === 'page' && $post->post_status === 'publish') {
         global $wpdb;
@@ -210,13 +207,17 @@ function esc_auto_generate_static_content($post_id, $post) {
         // Check if the page has already been generated as static content
         $static_page = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE page_id = %d", $post_id));
 
-        // If it exists in the database, regenerate the static content only once
-        if ($static_page) {
-            esc_generate_static_content($post_id, true); // Regenerate the content using the existing function
-            esc_log_event('auto-regenerate', $post_id, 'Static content auto-regenerated on page update.');
+        // If it exists in the database, regenerate the static content after a delay
+        if ($static_page && !wp_next_scheduled('esc_delayed_static_generation', array($post_id))) {
+            // Schedule the content generation event (avoid duplicates)
+            wp_schedule_single_event(time() + 2, 'esc_delayed_static_generation', array($post_id));
         }
     }
 }
+
+// Function to handle the delayed static generation
+add_action('esc_delayed_static_generation', 'esc_generate_static_content', 10, 1);
+
 
 // Function to log events to the database
 function esc_log_event($event_type, $page_id, $message) {
@@ -319,3 +320,4 @@ function esc_get_static_content($data) {
         'notes' => $static_page->notes
     );
 }
+?>
