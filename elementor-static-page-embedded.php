@@ -6,24 +6,76 @@ Version: 1.8
 Author: Garber Digital Marketing Team
 */
 
-// Create admin menu for static page generator
+// Create admin menu for static page generator and logs
 add_action('admin_menu', 'esc_create_admin_menu');
 function esc_create_admin_menu() {
     add_menu_page(
         'Elementor Static Content',  // Page title
-        'GMG Digital - Elementor Exporter',            // Menu title
-        'manage_options',            // Capability
+        'GMG Digital - Elementor Exporter',  // Menu title
+        'manage_options',  // Capability
         'static-content-generator',  // Menu slug
-        'esc_admin_page',            // Callback function
-        'dashicons-car',   // Icon
-        100                          // Position
+        'esc_admin_page',  // Callback function
+        'dashicons-car',  // Icon
+        100  // Position
+    );
+
+    // Add sub-menu for logs
+    add_submenu_page(
+        'static-content-generator',  // Parent slug
+        'Generation Logs',  // Page title
+        'Logs',  // Sub-menu title
+        'manage_options',  // Capability
+        'static-content-logs',  // Menu slug
+        'esc_logs_page'  // Callback function
     );
 }
+
+function esc_logs_page() {
+    global $wpdb;
+    $log_table_name = $wpdb->prefix . 'elementor_static_content_logs';
+
+    // Fetch logs from the database
+    $logs = $wpdb->get_results("SELECT * FROM $log_table_name ORDER BY created_at DESC LIMIT 50");
+
+    ?>
+    <div class="wrap">
+        <h1>Generation Logs</h1>
+        <table class="widefat fixed" cellspacing="0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Event Type</th>
+                    <th>Page ID</th>
+                    <th>Message</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (!empty($logs)) {
+                    foreach ($logs as $log) {
+                        ?>
+                        <tr>
+                            <td><?php echo esc_html($log->id); ?></td>
+                            <td><?php echo esc_html($log->event_type); ?></td>
+                            <td><?php echo esc_html($log->page_id); ?></td>
+                            <td><?php echo esc_html($log->message); ?></td>
+                            <td><?php echo esc_html($log->created_at); ?></td>
+                        </tr>
+                        <?php
+                    }
+                } else {
+                    echo '<tr><td colspan="5">No log events yet.</td></tr>';
+                } ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
 
 function esc_admin_page() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'elementor_static_content';
-    $log_table_name = $wpdb->prefix . 'elementor_static_content_logs';
 
     // Process form submission for generating static page
     if (isset($_POST['generate_static'])) {
@@ -36,7 +88,6 @@ function esc_admin_page() {
 
     // Fetch stored static pages from the database
     $static_pages = $wpdb->get_results("SELECT * FROM $table_name");
-    $logs = $wpdb->get_results("SELECT * FROM $log_table_name ORDER BY created_at DESC LIMIT 50");
 
     // Fetch debug logs
     $debug_logs = get_option('esc_debug_logs', []);
@@ -102,39 +153,10 @@ function esc_admin_page() {
                 } ?>
             </tbody>
         </table>
-
-        <h2>Log Events</h2>
-        <table class="widefat fixed" cellspacing="0">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Event Type</th>
-                    <th>Page ID</th>
-                    <th>Message</th>
-                    <th>Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (!empty($logs)) {
-                    foreach ($logs as $log) {
-                        ?>
-                        <tr>
-                            <td><?php echo esc_html($log->id); ?></td>
-                            <td><?php echo esc_html($log->event_type); ?></td>
-                            <td><?php echo esc_html($log->page_id); ?></td>
-                            <td><?php echo esc_html($log->message); ?></td>
-                            <td><?php echo esc_html($log->created_at); ?></td>
-                        </tr>
-                        <?php
-                    }
-                } else {
-                    echo '<tr><td colspan="5">No log events yet.</td></tr>';
-                } ?>
-            </tbody>
-        </table>
     </div>
     <?php
 }
+
 
 function esc_generate_static_content($page_id, $auto_trigger = false) {
     global $wpdb;
