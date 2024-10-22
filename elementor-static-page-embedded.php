@@ -20,7 +20,6 @@ function esc_create_admin_menu() {
     );
 }
 
-// Admin page content to generate and display static pages and logs
 function esc_admin_page() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'elementor_static_content';
@@ -39,6 +38,9 @@ function esc_admin_page() {
     $static_pages = $wpdb->get_results("SELECT * FROM $table_name");
     $logs = $wpdb->get_results("SELECT * FROM $log_table_name ORDER BY created_at DESC LIMIT 50");
 
+    // Fetch debug logs
+    $debug_logs = get_option('esc_debug_logs', []);
+
     ?>
     <div class="wrap">
         <h1>Generate Static HTML for Elementor Page</h1>
@@ -55,6 +57,15 @@ function esc_admin_page() {
             </select>
             <input type="submit" name="generate_static" value="Generate Static Content" class="button-primary">
         </form>
+
+        <?php
+        // Display debug logs if available
+        if (!empty($debug_logs)) {
+            echo '<div class="notice notice-info"><pre>' . esc_html(implode("\n", $debug_logs)) . '</pre></div>';
+            // Clear logs after displaying
+            delete_option('esc_debug_logs');
+        }
+        ?>
 
         <h2>Generated Static Pages</h2>
         <table class="widefat fixed" cellspacing="0">
@@ -77,7 +88,7 @@ function esc_admin_page() {
                             <td><?php echo esc_html(get_the_title($static_page->page_id)); ?></td>
                             <td><?php echo esc_html($static_page->elementor_div_id); ?></td>
                             <td>
-<textarea readonly><?php echo esc_html('<div class="elementor-content" data-elementor-id="' . str_replace('elementor-', '', $static_page->elementor_div_id) . '"></div><style>.loading-container{display:flex;justify-content:center;align-items:center;padding:20px;margin-bottom:20px;height:200px}.loading-iframe{width:100%;height:100px;border:none}</style><div class="loading-container"><iframe class="loading-iframe" src="https://gmg-digital.vercel.app/loading-widget"></iframe></div>'); ?></textarea>
+                                <textarea readonly><?php echo esc_html($static_page->html_embed_code); ?></textarea>
                             </td>
                             <td><?php echo esc_html($static_page->generated_at); ?></td>
                             <td>
@@ -125,15 +136,19 @@ function esc_admin_page() {
     <?php
 }
 
-// Function to extract and save static content including CSS/JS and log events
 function esc_generate_static_content($page_id, $auto_trigger = false) {
     global $wpdb;
+    $table_name = $wpdb->prefix . 'elementor_static_content';
     $page = get_post($page_id);
+    $debug_logs = [];
+
     if (!$page || $page->post_status !== 'publish') {
         esc_log_event('error', $page_id, 'Invalid page selected.');
+        $debug_logs[] = 'Invalid page selected.';
         if (!$auto_trigger) {
             echo '<div class="notice notice-error"><p>Invalid page selected.</p></div>';
         }
+        update_option('esc_debug_logs', $debug_logs);
         return;
     }
 
@@ -141,52 +156,146 @@ function esc_generate_static_content($page_id, $auto_trigger = false) {
     $page_url = get_permalink($page_id);
     $response = wp_remote_get($page_url);
     if (is_wp_error($response)) {
+        $debug_logs[] = 'Error fetching page: ' . $response->get_error_message();
         esc_log_event('error', $page_id, 'Error fetching page: ' . $response->get_error_message());
         if (!$auto_trigger) {
             echo '<div class="notice notice-error"><p>Error fetching page: ' . $response->get_error_message() . '</p></div>';
         }
+        update_option('esc_debug_logs', $debug_logs);
         return;
     }
 
     // Retrieve the HTML content from the response body
     $content = wp_remote_retrieve_body($response);
+    $debug_logs[] = 'HTML content retrieved from page URL.';
 
     // Parse the content and extract CSS and JS file references
     $styles = [];
     $scripts = [];
 
-    // Match all <link> tags for CSS
     preg_match_all('/<link.*?href=[\'"](.*?\.css.*?)[\'"].*?>/i', $content, $style_matches);
     if (!empty($style_matches[1])) {
-        $styles = $style_matches[1];  // Extract matched CSS URLs
+        $styles = $style_matches[1];
+        $debug_logs[] = 'CSS styles extracted.';
     }
 
-    // Match all <script> tags for JS
     preg_match_all('/<script.*?src=[\'"](.*?\.js.*?)[\'"].*?>/i', $content, $script_matches);
     if (!empty($script_matches[1])) {
-        $scripts = $script_matches[1];  // Extract matched JS URLs
+        $scripts = $script_matches[1];
+        $debug_logs[] = 'JS scripts extracted.';
     }
 
-    // Generate a unique Elementor div ID based on the page ID
     $elementor_div_id = 'elementor-' . $page_id;
+    $debug_logs[] = 'Elementor Div ID generated: ' . $elementor_div_id;
 
-    // Save the static page content, styles, scripts, and metadata in the database
-    $table_name = $wpdb->prefix . 'elementor_static_content';
-    $wpdb->replace(
-        $table_name,
-        [
-            'page_id' => $page_id,
-            'content' => $content,
-            'elementor_div_id' => $elementor_div_id,
-            'generated_at' => current_time('mysql'),
-            'notes' => '',
-            'styles' => maybe_serialize($styles),
-            'scripts' => maybe_serialize($scripts)
-        ],
-        ['%d', '%s', '%s', '%s', '%s', '%s', '%s']
-    );
+    // Fetch the seo_content from the WordPress REST API
+    $rest_api_url = get_rest_url(null, '/wp/v2/pages/' . $page_id);
+    $rest_response = wp_remote_get($rest_api_url);
+    $seo_content_html = '';
 
-    // Log the generation event
+    if (!is_wp_error($rest_response)) {
+        $rest_body = wp_remote_retrieve_body($rest_response);
+        $rest_data = json_decode($rest_body, true);
+
+        $debug_logs[] = 'REST API response received.';
+        if (isset($rest_data['acf']) && isset($rest_data['acf']['seo_content'])) {
+            $seo_content = $rest_data['acf']['seo_content'];
+            $seo_content_html = '<div class="hidden-content-container">' . esc_html($seo_content) . '</div>';
+            $debug_logs[] = 'SEO Content retrieved: ' . $seo_content;
+        } else {
+            $debug_logs[] = 'No SEO Content found in REST API response.';
+        }
+    } else {
+        $debug_logs[] = 'Error fetching REST API response: ' . $rest_response->get_error_message();
+    }
+
+    // Generate the HTML Embed Code
+    $html_embed_code = '<div class="elementor-content" data-elementor-id="' . esc_attr($elementor_div_id) . '"></div>' .
+                       '<style>.loading-container{display:flex;justify-content:center;align-items:center;padding:20px;margin-bottom:20px;height:200px}.loading-iframe{width:100%;height:100px;border:none}</style>' .
+                       '<div class="loading-container"><iframe class="loading-iframe" src="https://gmg-digital.vercel.app/loading-widget"></iframe></div>' .
+                       $seo_content_html;
+
+    $debug_logs[] = 'Generated HTML Embed Code: ' . $html_embed_code;
+
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $table_name LIKE 'html_embed_code'");
+    if (empty($columns)) {
+        $wpdb->query("ALTER TABLE $table_name ADD html_embed_code LONGTEXT");
+        $debug_logs[] = 'Added missing html_embed_code column to the table.';
+    }
+
+    $existing_row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE page_id = %d", $page_id));
+    if ($existing_row) {
+        // If row exists, perform the update
+        $update_result = $wpdb->update(
+            $table_name,
+            [
+                'content' => $content,
+                'elementor_div_id' => $elementor_div_id,
+                'generated_at' => current_time('mysql'),
+                'notes' => '',
+                'styles' => maybe_serialize($styles),
+                'scripts' => maybe_serialize($scripts),
+                'html_embed_code' => $html_embed_code
+            ],
+            ['page_id' => $page_id],
+            ['%s', '%s', '%s', '%s', '%s', '%s', '%s'],
+            ['%d']
+        );
+
+        if ($update_result === false) {
+            $debug_logs[] = 'Failed to update the static content in the database. Last error: ' . $wpdb->last_error;
+        } else if ($update_result === 0) {
+            $debug_logs[] = 'Update query ran, but no rows were affected. Forcing update...';
+            // Force update by deleting and re-inserting the row
+            $wpdb->delete($table_name, ['page_id' => $page_id], ['%d']);
+            $insert_result = $wpdb->insert(
+                $table_name,
+                [
+                    'page_id' => $page_id,
+                    'content' => $content,
+                    'elementor_div_id' => $elementor_div_id,
+                    'generated_at' => current_time('mysql'),
+                    'notes' => '',
+                    'styles' => maybe_serialize($styles),
+                    'scripts' => maybe_serialize($scripts),
+                    'html_embed_code' => $html_embed_code
+                ],
+                ['%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s']
+            );
+            if ($insert_result === false) {
+                $debug_logs[] = 'Failed to force insert after update failure. Last error: ' . $wpdb->last_error;
+            } else {
+                $debug_logs[] = 'Successfully forced insert after update failure.';
+            }
+        } else {
+            $debug_logs[] = 'Successfully updated the static content in the database.';
+        }
+    } else {
+        // Insert new row if it doesn't exist
+        $insert_result = $wpdb->insert(
+            $table_name,
+            [
+                'page_id' => $page_id,
+                'content' => $content,
+                'elementor_div_id' => $elementor_div_id,
+                'generated_at' => current_time('mysql'),
+                'notes' => '',
+                'styles' => maybe_serialize($styles),
+                'scripts' => maybe_serialize($scripts),
+                'html_embed_code' => $html_embed_code
+            ],
+            ['%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s']
+        );
+
+        if ($insert_result === false) {
+            $debug_logs[] = 'Failed to insert the static content into the database. Last error: ' . $wpdb->last_error;
+        } else {
+            $debug_logs[] = 'Successfully inserted the static content into the database.';
+        }
+    }
+
+    update_option('esc_debug_logs', $debug_logs);
+
     $trigger_type = $auto_trigger ? 'auto-generation' : 'manual-generation';
     esc_log_event('generation', $page_id, "Static content $trigger_type triggered and generated successfully.");
 
@@ -194,6 +303,8 @@ function esc_generate_static_content($page_id, $auto_trigger = false) {
         echo '<div class="notice notice-success"><p>Static page generated and saved successfully. Add this div ID: <strong>' . $elementor_div_id . '</strong> to your dealership site.</p></div>';
     }
 }
+
+
 
 
 // Function to trigger static content regeneration on page update
@@ -207,13 +318,15 @@ function esc_auto_generate_static_content($post_id, $post) {
         // Check if the page has already been generated as static content
         $static_page = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE page_id = %d", $post_id));
 
-        // If it exists in the database, regenerate the static content after a delay
+        // If the static content already exists in the database, regenerate it
         if ($static_page && !wp_next_scheduled('esc_delayed_static_generation', array($post_id))) {
-            // Schedule the content generation event (avoid duplicates)
+            // Schedule the content regeneration event after a short delay (2 seconds)
+            // This prevents duplicate scheduling
             wp_schedule_single_event(time() + 2, 'esc_delayed_static_generation', array($post_id));
         }
     }
 }
+
 
 // Function to handle the delayed static generation
 add_action('esc_delayed_static_generation', 'esc_generate_static_content', 10, 1);
