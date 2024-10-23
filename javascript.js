@@ -15,6 +15,60 @@
         }
     };
 
+    // Cache to store fetched data for each sheet
+    const sheetdbCache = {};
+
+    const fetchSheetData = async (sheetdbUrl, sheetdbSheet) => {
+        // If the data is already cached, return it
+        if (sheetdbCache[sheetdbSheet]) {
+            return sheetdbCache[sheetdbSheet];
+        }
+
+        // Fetch data from the SheetDB API for the given sheet
+        try {
+            const sheetdbRequestUrl = `${sheetdbUrl}?sheet=${encodeURIComponent(sheetdbSheet)}`;
+            const response = await fetch(sheetdbRequestUrl);
+            const data = await response.json();
+
+            // Cache the data to avoid duplicate API calls
+            sheetdbCache[sheetdbSheet] = data;
+            return data;
+        } catch (error) {
+            console.error(`Error fetching data for sheet: ${sheetdbSheet}`, error);
+            return null;
+        }
+    };
+
+    const updateElementContent = (element, data, make, model) => {
+        // Find the relevant entry based on Make and Model
+        const matchingEntry = data.find(item => item.Make === make && item.Model === model);
+
+        if (matchingEntry) {
+            // Replace placeholders based on the response data
+            const keys = Object.keys(matchingEntry);
+            keys.forEach(key => {
+                const placeholder = `{{${key}}}`;
+                if (element.innerHTML.includes(placeholder)) {
+                    element.innerHTML = element.innerHTML.replace(placeholder, matchingEntry[key]);
+                }
+            });
+
+            // If there are still placeholders not replaced, set them to an empty string
+            element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
+
+            // Apply CSS to prevent text from being cut off on desktop
+            element.style.whiteSpace = 'nowrap';
+            element.style.wordBreak = 'keep-all';
+            element.style.overflowWrap = 'normal';
+
+            console.log(`Updated element content for ${make} ${model}: ${element.innerHTML}`);
+        } else {
+            // No matching data found, remove all placeholders and set to blank
+            element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
+            console.log(`No matching data found for ${make} ${model}, setting placeholders to blank.`);
+        }
+    };
+
     const loadStaticContent = async (element, pageId, API) => {
         try {
             // Normalize the page ID by removing the "elementor-" prefix if present
@@ -63,6 +117,20 @@
                         max-width: 100% !important;
                         box-sizing: border-box !important;
                     }
+                    /* Desktop-specific text handling */
+                    [data-sheetdb-url] {
+                        white-space: nowrap;
+                        word-break: keep-all;
+                        overflow-wrap: normal;
+                    }
+                    @media (max-width: 768px) {
+                        /* Revert styles for mobile */
+                        [data-sheetdb-url] {
+                            white-space: normal;
+                            word-break: break-word;
+                            overflow-wrap: break-word;
+                        }
+                    }
                 `;
                 document.head.appendChild(styleElement); // Add the styles to the main document
 
@@ -72,37 +140,39 @@
                 if (loadingContainer) loadingContainer.style.display = 'none';
                 if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
 
-                // Manually trigger a SheetDB update for elements inside the shadow root
+                // Manually trigger a SheetDB update for each element inside the shadow root
                 console.log('Manually triggering SheetDB update for elements inside the shadow root...');
                 const sheetdbElements = shadowRoot.querySelectorAll('[data-sheetdb-url]');
-                sheetdbElements.forEach(async el => {
-                    console.log('Updating element:', el);
+                for (const el of sheetdbElements) {
                     const sheetdbUrl = el.getAttribute('data-sheetdb-url');
                     const sheetdbSheet = el.getAttribute('data-sheetdb-sheet');
                     const sheetdbSearch = el.getAttribute('data-sheetdb-search');
 
-                    if (sheetdbUrl) {
-                        try {
-                            const sheetdbResponse = await fetch(`${sheetdbUrl}?sheet=${sheetdbSheet}&search=${sheetdbSearch}`);
-                            const sheetdbData = await sheetdbResponse.json();
-                            
-                            if (sheetdbData.length > 0) {
-                                const keys = Object.keys(sheetdbData[0]);
-                                keys.forEach(key => {
-                                    const placeholder = `{{${key}}}`;
-                                    if (el.innerHTML.includes(placeholder)) {
-                                        el.innerHTML = el.innerHTML.replace(placeholder, sheetdbData[0][key]);
-                                    }
-                                });
-                                console.log(`Updated element content with SheetDB data: ${el.innerHTML}`);
-                            } else {
-                                console.log('No data found for the given SheetDB parameters.');
+                    if (sheetdbUrl && sheetdbSheet && sheetdbSearch) {
+                        // Parse the search parameters to extract Make and Model
+                        const searchParams = new URLSearchParams(sheetdbSearch);
+                        const make = searchParams.get('Make');
+                        const model = searchParams.get('Model');
+
+                        if (make && model) {
+                            // Fetch data for the given sheet
+                            const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
+
+                            if (sheetData) {
+                                // Update the content of the element based on the retrieved data
+                                updateElementContent(el, sheetData, make, model);
                             }
-                        } catch (error) {
-                            console.error('Error fetching SheetDB data:', error);
                         }
+
+                        // If no data was found, ensure placeholders are removed
+                        if (el.innerHTML.includes('{{')) {
+                            el.innerHTML = ''; // Set the content to an empty string
+                            console.log(`Removed placeholders for element: ${el.outerHTML}`);
+                        }
+                    } else {
+                        console.warn('Missing data-sheetdb-url, data-sheetdb-sheet, or data-sheetdb-search attribute for element:', el);
                     }
-                });
+                }
             } else {
                 console.error(`No content found for page ID ${normalizedPageId}`);
             }
