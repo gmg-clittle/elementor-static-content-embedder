@@ -1,4 +1,5 @@
 (async APILoader => {
+    const maxRetries = 5;
     const retryCreateAPI = async (retries, delay) => {
         try {
             const API = await APILoader.create();
@@ -6,12 +7,22 @@
         } catch (error) {
             if (retries === 0) {
                 console.error('Dealer.com API not available after multiple attempts:', error);
-                window.location.reload();
-                throw new Error('Dealer.com API not available, refreshing page...');
+                updateLoadingIframe(); // Update the iframe and set a timeout to refresh the page
+                return null;
             }
             console.warn(`Dealer.com API not available, retrying in ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             return retryCreateAPI(retries - 1, delay * 2); // Retry with exponential backoff
+        }
+    };
+
+    const updateLoadingIframe = () => {
+        const loadingIframe = document.querySelector('.loading-container .loading-iframe');
+        if (loadingIframe) {
+            loadingIframe.src = 'https://gmg-digital.vercel.app/longer-than-expected';
+            setTimeout(() => {
+                window.location.reload(); // Refresh the page after 3 seconds
+            }, 3000);
         }
     };
 
@@ -40,8 +51,10 @@
     };
 
     const updateElementContent = (element, data, make, model) => {
-        // Find the relevant entry based on Make and Model
-        const matchingEntry = data.find(item => item.Make === make && item.Model === model);
+        // Find the relevant entry based on Make and Model, and check if Expired is "Active" and Status is "Enabled"
+        const matchingEntry = data.find(
+            item => item.Make === make && item.Model === model && item.Expired === 'Active' && item.Status === 'Enabled'
+        );
 
         if (matchingEntry) {
             // Replace placeholders based on the response data
@@ -56,14 +69,27 @@
             // If there are still placeholders not replaced, set them to an empty string
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
 
-            // Apply CSS to prevent text from being cut off on desktop
-            element.style.whiteSpace = 'nowrap';
+            // Apply CSS to ensure words are not cut off on desktop
+            element.style.whiteSpace = 'normal';
             element.style.wordBreak = 'keep-all';
-            element.style.overflowWrap = 'normal';
+            element.style.overflowWrap = 'break-word';
+
+            // Additional desktop-specific adjustments using a media query
+            const styleElement = document.createElement('style');
+            styleElement.innerHTML = `
+                @media (min-width: 769px) {
+                    [data-sheetdb-url] {
+                        white-space: normal;
+                        word-break: keep-all;
+                        overflow-wrap: break-word;
+                    }
+                }
+            `;
+            document.head.appendChild(styleElement);
 
             console.log(`Updated element content for ${make} ${model}: ${element.innerHTML}`);
         } else {
-            // No matching data found, remove all placeholders and set to blank
+            // No matching data found or conditions not met, remove all placeholders and set to blank
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
             console.log(`No matching data found for ${make} ${model}, setting placeholders to blank.`);
         }
@@ -103,7 +129,7 @@
                     });
                 }
 
-                // Add custom styles to prevent horizontal scrolling and override problematic styles
+                // Prevent horizontal scrolling and ensure text behaves properly
                 const styleElement = document.createElement('style');
                 styleElement.innerHTML = `
                     /* Prevent horizontal scrolling */
@@ -116,20 +142,6 @@
                         margin: 0 !important;
                         max-width: 100% !important;
                         box-sizing: border-box !important;
-                    }
-                    /* Desktop-specific text handling */
-                    [data-sheetdb-url] {
-                        white-space: nowrap;
-                        word-break: keep-all;
-                        overflow-wrap: normal;
-                    }
-                    @media (max-width: 768px) {
-                        /* Revert styles for mobile */
-                        [data-sheetdb-url] {
-                            white-space: normal;
-                            word-break: break-word;
-                            overflow-wrap: break-word;
-                        }
                     }
                 `;
                 document.head.appendChild(styleElement); // Add the styles to the main document
@@ -205,17 +217,18 @@
     const loadingContainer = document.querySelector('.loading-container');
     if (loadingContainer) loadingContainer.style.display = 'block';
 
-    const API = await retryCreateAPI(5, 1000);
+    const API = await retryCreateAPI(maxRetries, 1000);
 
-    API.subscribe('page-load-v1', ev => {
-        const elementorDivs = document.querySelectorAll('[data-elementor-id]');
+    if (API) {
+        API.subscribe('page-load-v1', ev => {
+            const elementorDivs = document.querySelectorAll('[data-elementor-id]');
 
-        elementorDivs.forEach(elementorDiv => {
-            const pageId = elementorDiv.getAttribute('data-elementor-id');
-            if (pageId) {
-                loadStaticContent(elementorDiv, pageId, API);
-            }
+            elementorDivs.forEach(elementorDiv => {
+                const pageId = elementorDiv.getAttribute('data-elementor-id');
+                if (pageId) {
+                    loadStaticContent(elementorDiv, pageId, API);
+                }
+            });
         });
-    });
-
+    }
 })(window.DDC.APILoader);
