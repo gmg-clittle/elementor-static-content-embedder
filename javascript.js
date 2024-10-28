@@ -1,5 +1,5 @@
 (async APILoader => {
-    const maxRetries = 5;
+    const maxRetries = 3;
     const retryCreateAPI = async (retries, delay) => {
         try {
             const API = await APILoader.create();
