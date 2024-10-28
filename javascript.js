@@ -3,16 +3,16 @@
     const retryCreateAPI = async (retries, delay) => {
         try {
             const API = await APILoader.create();
-            return API; // Successfully created API
+            return API;
         } catch (error) {
             if (retries === 0) {
                 console.error('Dealer.com API not available after multiple attempts:', error);
-                updateLoadingIframe(); // Update the iframe and set a timeout to refresh the page
+                updateLoadingIframe();
                 return null;
             }
             console.warn(`Dealer.com API not available, retrying in ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
-            return retryCreateAPI(retries - 1, delay * 2); // Retry with exponential backoff
+            return retryCreateAPI(retries - 1, delay * 2);
         }
     };
 
@@ -21,27 +21,21 @@
         if (loadingIframe) {
             loadingIframe.src = 'https://gmg-digital.vercel.app/longer-than-expected';
             setTimeout(() => {
-                window.location.reload(); // Refresh the page after 3 seconds
+                window.location.reload();
             }, 3000);
         }
     };
 
-    // Cache to store fetched data for each sheet
     const sheetdbCache = {};
 
     const fetchSheetData = async (sheetdbUrl, sheetdbSheet) => {
-        // If the data is already cached, return it
         if (sheetdbCache[sheetdbSheet]) {
             return sheetdbCache[sheetdbSheet];
         }
-
-        // Fetch data from the SheetDB API for the given sheet
         try {
             const sheetdbRequestUrl = `${sheetdbUrl}?sheet=${encodeURIComponent(sheetdbSheet)}`;
             const response = await fetch(sheetdbRequestUrl);
             const data = await response.json();
-
-            // Cache the data to avoid duplicate API calls
             sheetdbCache[sheetdbSheet] = data;
             return data;
         } catch (error) {
@@ -51,13 +45,11 @@
     };
 
     const updateElementContent = (element, data, make, model) => {
-        // Find the relevant entry based on Make and Model, and check if Expired is "Active" and Status is "Enabled"
         const matchingEntry = data.find(
             item => item.Make === make && item.Model === model && item.Expired === 'Active' && item.Status === 'Enabled'
         );
 
         if (matchingEntry) {
-            // Replace placeholders based on the response data
             const keys = Object.keys(matchingEntry);
             keys.forEach(key => {
                 const placeholder = `{{${key}}}`;
@@ -66,15 +58,21 @@
                 }
             });
 
-            // If there are still placeholders not replaced, set them to an empty string
+            // Handle Disclaimer specifically
+            const disclaimerPlaceholder = '{{Disclaimer}}';
+            if (matchingEntry.Disclaimer) {
+                element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, matchingEntry.Disclaimer);
+            } else {
+                element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, '');
+                console.log('Disclaimer placeholder removed due to missing content.');
+            }
+
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
 
-            // Apply CSS to ensure words are not cut off on desktop
             element.style.whiteSpace = 'normal';
             element.style.wordBreak = 'keep-all';
             element.style.overflowWrap = 'break-word';
 
-            // Additional desktop-specific adjustments using a media query
             const styleElement = document.createElement('style');
             styleElement.innerHTML = `
                 @media (min-width: 769px) {
@@ -89,7 +87,6 @@
 
             console.log(`Updated element content for ${make} ${model}: ${element.innerHTML}`);
         } else {
-            // No matching data found or conditions not met, remove all placeholders and set to blank
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
             console.log(`No matching data found for ${make} ${model}, setting placeholders to blank.`);
         }
@@ -97,21 +94,17 @@
 
     const loadStaticContent = async (element, pageId, API) => {
         try {
-            // Normalize the page ID by removing the "elementor-" prefix if present
             const normalizedPageId = pageId.replace(/^elementor-/, '');
             const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
             const data = await response.json();
 
             if (data && data.content) {
-                // Create a shadow root for isolation
                 const shadowRoot = element.attachShadow({ mode: 'open' });
 
-                // Insert the static HTML content into the shadow root
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = data.content;
                 shadowRoot.appendChild(contentContainer);
 
-                // Apply scoped CSS and JS to the shadow root
                 if (data.styles) {
                     data.styles.forEach(styleUrl => {
                         const link = document.createElement('link');
@@ -129,14 +122,11 @@
                     });
                 }
 
-                // Prevent horizontal scrolling and ensure text behaves properly
                 const styleElement = document.createElement('style');
                 styleElement.innerHTML = `
-                    /* Prevent horizontal scrolling */
                     body, html {
                         overflow-x: hidden !important;
                     }
-                    /* Ensure the container does not cause overflow */
                     .container-max-md.page-section.p-4.p-md-5.px-lg-6.px-xl-8 {
                         padding: 0 !important;
                         margin: 0 !important;
@@ -144,15 +134,13 @@
                         box-sizing: border-box !important;
                     }
                 `;
-                document.head.appendChild(styleElement); // Add the styles to the main document
+                document.head.appendChild(styleElement);
 
-                // Hide the loading spinner and hidden content container in the main document
                 const loadingContainer = document.querySelector('.loading-container');
                 const hiddenContentContainer = document.querySelector('.hidden-content-container');
                 if (loadingContainer) loadingContainer.style.display = 'none';
                 if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
 
-                // Manually trigger a SheetDB update for each element inside the shadow root
                 console.log('Manually triggering SheetDB update for elements inside the shadow root...');
                 const sheetdbElements = shadowRoot.querySelectorAll('[data-sheetdb-url]');
                 for (const el of sheetdbElements) {
@@ -161,24 +149,20 @@
                     const sheetdbSearch = el.getAttribute('data-sheetdb-search');
 
                     if (sheetdbUrl && sheetdbSheet && sheetdbSearch) {
-                        // Parse the search parameters to extract Make and Model
                         const searchParams = new URLSearchParams(sheetdbSearch);
                         const make = searchParams.get('Make');
                         const model = searchParams.get('Model');
 
                         if (make && model) {
-                            // Fetch data for the given sheet
                             const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
 
                             if (sheetData) {
-                                // Update the content of the element based on the retrieved data
                                 updateElementContent(el, sheetData, make, model);
                             }
                         }
 
-                        // If no data was found, ensure placeholders are removed
                         if (el.innerHTML.includes('{{')) {
-                            el.innerHTML = ''; // Set the content to an empty string
+                            el.innerHTML = '';
                             console.log(`Removed placeholders for element: ${el.outerHTML}`);
                         }
                     } else {
@@ -194,7 +178,6 @@
     };
 
     const updateContent = () => {
-        // Force a redownload of all content by calling sheetdb_upd() with console log debugging
         if (typeof window.sheetdb_upd === 'function') {
             console.log('Triggering content update via sheetdb_upd()...');
             try {
@@ -208,10 +191,8 @@
         }
     };
 
-    // Make the updateContent function available globally
     window.updateContent = updateContent;
 
-    // Display the loading spinner and hidden content container on page load
     const hiddenContentContainer = document.querySelector('.hidden-content-container');
     if (hiddenContentContainer) hiddenContentContainer.style.display = 'block';
     const loadingContainer = document.querySelector('.loading-container');
