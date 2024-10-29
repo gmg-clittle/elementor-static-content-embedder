@@ -200,16 +200,42 @@
 
     const API = await retryCreateAPI(maxRetries, 1000);
 
-    if (API) {
+       if (API) {
         API.subscribe('page-load-v1', ev => {
             const elementorDivs = document.querySelectorAll('[data-elementor-id]');
 
-            elementorDivs.forEach(elementorDiv => {
-                const pageId = elementorDiv.getAttribute('data-elementor-id');
-                if (pageId) {
-                    loadStaticContent(elementorDiv, pageId, API);
-                }
-            });
+            // New functionality for specific pages
+            const loadScriptAfterContent = () => {
+                const script = document.createElement('script');
+                script.src = 'https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js'; // Replace with your actual script URL
+                script.async = true;
+                document.head.appendChild(script);
+                console.log("Script loaded after dynamic content insertion.");
+            };
+
+            if (ev.payload.pageName && ev.payload.pageName.startsWith("SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR")) {
+                console.log("Executing specific functionality for SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR pages...");
+
+                const loadContentPromises = Array.from(elementorDivs).map(async elementorDiv => {
+                    const pageId = elementorDiv.getAttribute('data-elementor-id');
+                    if (pageId) {
+                        return loadStaticContent
+                        (elementorDiv, pageId, API);
+                    }
+                });
+
+                Promise.all(loadContentPromises).then(() => {
+                    loadScriptAfterContent(); // Call the script load after all content is inserted
+                });
+            } else {
+                // Standard handling for other pages
+                elementorDivs.forEach(elementorDiv => {
+                    const pageId = elementorDiv.getAttribute('data-elementor-id');
+                    if (pageId) {
+                        loadStaticContent(elementorDiv, pageId, API);
+                    }
+                });
+            }
         });
     }
 })(window.DDC.APILoader);
