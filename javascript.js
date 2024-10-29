@@ -1,7 +1,5 @@
 (async APILoader => {
     const maxRetries = 3;
-    const sheetdbCache = {};
-
     const retryCreateAPI = async (retries, delay) => {
         try {
             const API = await APILoader.create();
@@ -9,7 +7,7 @@
         } catch (error) {
             if (retries === 0) {
                 console.error('Dealer.com API not available after multiple attempts:', error);
-                loadContentWithoutAPI();
+                updateLoadingIframe();
                 return null;
             }
             console.warn(`Dealer.com API not available, retrying in ${delay}ms...`);
@@ -17,6 +15,18 @@
             return retryCreateAPI(retries - 1, delay * 2);
         }
     };
+
+    const updateLoadingIframe = () => {
+        const loadingIframe = document.querySelector('.loading-container .loading-iframe');
+        if (loadingIframe) {
+            loadingIframe.src = 'https://gmg-digital.vercel.app/longer-than-expected';
+            setTimeout(() => {
+                window.location.reload();
+            }, 3000);
+        }
+    };
+
+    const sheetdbCache = {};
 
     const fetchSheetData = async (sheetdbUrl, sheetdbSheet) => {
         if (sheetdbCache[sheetdbSheet]) {
@@ -48,15 +58,16 @@
                 }
             });
 
+            // Handle Disclaimer specifically
             const disclaimerPlaceholder = '{{Disclaimer}}';
             if (matchingEntry.Disclaimer) {
                 element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, matchingEntry.Disclaimer);
             } else {
                 element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, '');
+                console.log('Disclaimer placeholder removed due to missing content.');
             }
 
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
-            console.log(`Updated element content for ${make} ${model}: ${element.innerHTML}`);
 
             element.style.whiteSpace = 'normal';
             element.style.wordBreak = 'keep-all';
@@ -73,25 +84,15 @@
                 }
             `;
             document.head.appendChild(styleElement);
+
+            console.log(`Updated element content for ${make} ${model}: ${element.innerHTML}`);
         } else {
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
             console.log(`No matching data found for ${make} ${model}, setting placeholders to blank.`);
         }
     };
 
-    const loadContentWithoutAPI = () => {
-        const elementorDivs = document.querySelectorAll('[data-elementor-id]');
-        console.log('Loading content directly without DDC API.');
-
-        elementorDivs.forEach(elementorDiv => {
-            const pageId = elementorDiv.getAttribute('data-elementor-id');
-            if (pageId) {
-                loadStaticContentDirectly(elementorDiv, pageId);
-            }
-        });
-    };
-
-    const loadStaticContentDirectly = async (element, pageId) => {
+    const loadStaticContent = async (element, pageId, API) => {
         try {
             const normalizedPageId = pageId.replace(/^elementor-/, '');
             const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
@@ -99,6 +100,7 @@
 
             if (data && data.content) {
                 const shadowRoot = element.attachShadow({ mode: 'open' });
+
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = data.content;
                 shadowRoot.appendChild(contentContainer);
@@ -134,6 +136,11 @@
                 `;
                 document.head.appendChild(styleElement);
 
+                const loadingContainer = document.querySelector('.loading-container');
+                const hiddenContentContainer = document.querySelector('.hidden-content-container');
+                if (loadingContainer) loadingContainer.style.display = 'none';
+                if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
+
                 console.log('Manually triggering SheetDB update for elements inside the shadow root...');
                 const sheetdbElements = shadowRoot.querySelectorAll('[data-sheetdb-url]');
                 for (const el of sheetdbElements) {
@@ -148,6 +155,7 @@
 
                         if (make && model) {
                             const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
+
                             if (sheetData) {
                                 updateElementContent(el, sheetData, make, model);
                             }
@@ -161,22 +169,12 @@
                         console.warn('Missing data-sheetdb-url, data-sheetdb-sheet, or data-sheetdb-search attribute for element:', el);
                     }
                 }
-
-                hideLoadingContainers();
-                console.log(`Content loaded directly for page ID ${normalizedPageId}`);
             } else {
-                console.error(`No content found for page ID ${normalizedPageId} in direct load.`);
+                console.error(`No content found for page ID ${normalizedPageId}`);
             }
         } catch (error) {
             console.error('Error loading static content:', error);
         }
-    };
-
-    const hideLoadingContainers = () => {
-        const loadingContainer = document.querySelector('.loading-container');
-        const hiddenContentContainer = document.querySelector('.hidden-content-container');
-        if (loadingContainer) loadingContainer.style.display = 'none';
-        if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
     };
 
     const updateContent = () => {
@@ -202,40 +200,42 @@
 
     const API = await retryCreateAPI(maxRetries, 1000);
 
-    if (API) {
+       if (API) {
         API.subscribe('page-load-v1', ev => {
             const elementorDivs = document.querySelectorAll('[data-elementor-id]');
 
+            // New functionality for specific pages
             const loadScriptAfterContent = () => {
                 const script = document.createElement('script');
-                script.src = 'https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js';
+                script.src = 'https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js'; // Replace with your actual script URL
                 script.async = true;
                 document.head.appendChild(script);
+                console.log("Script loaded after dynamic content insertion.");
             };
 
             if (ev.payload.pageName && ev.payload.pageName.startsWith("SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR")) {
+                console.log("Executing specific functionality for SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR pages...");
+
                 const loadContentPromises = Array.from(elementorDivs).map(async elementorDiv => {
                     const pageId = elementorDiv.getAttribute('data-elementor-id');
                     if (pageId) {
-                        return loadStaticContent(elementorDiv, pageId, API);
+                        return loadStaticContent
+                        (elementorDiv, pageId, API);
                     }
                 });
 
                 Promise.all(loadContentPromises).then(() => {
-                    loadScriptAfterContent();
-                    hideLoadingContainers();
+                    loadScriptAfterContent(); // Call the script load after all content is inserted
                 });
             } else {
+                // Standard handling for other pages
                 elementorDivs.forEach(elementorDiv => {
                     const pageId = elementorDiv.getAttribute('data-elementor-id');
                     if (pageId) {
                         loadStaticContent(elementorDiv, pageId, API);
                     }
                 });
-                hideLoadingContainers();
             }
         });
-    } else {
-        console.log("Direct content loading initialized due to unavailable DDC API.");
     }
 })(window.DDC.APILoader);
