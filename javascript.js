@@ -1,26 +1,44 @@
 (async APILoader => {
-    const maxRetries = 3;
+    const maxRetries = 2;
+
     const retryCreateAPI = async (retries, delay) => {
         try {
+            console.log(`Attempting to create DDC API. Retries left: ${retries}`);
             const API = await APILoader.create();
+            console.log('DDC API created successfully.');
             return API;
         } catch (error) {
             if (retries === 0) {
                 console.error('Dealer.com API not available after multiple attempts:', error);
-                updateLoadingIframe();
+                loadContentWithoutAPI(); // Fallback to direct content load
                 return null;
             }
-            console.warn(`Dealer.com API not available, retrying in ${delay}ms...`);
+            console.warn(`DDC API creation failed. Retrying in ${delay}ms... Retries left: ${retries - 1}`);
             await new Promise(resolve => setTimeout(resolve, delay));
             return retryCreateAPI(retries - 1, delay * 2);
         }
     };
 
+    const loadContentWithoutAPI = () => {
+        console.log("Fallback mode activated: loading content directly without DDC API.");
+        const elementorDivs = document.querySelectorAll('[data-elementor-id]');
+        
+        elementorDivs.forEach(elementorDiv => {
+            const pageId = elementorDiv.getAttribute('data-elementor-id');
+            if (pageId) {
+                console.log(`Loading content for element with page ID: ${pageId} using fallback.`);
+                loadStaticContentDirectly(elementorDiv, pageId);
+            }
+        });
+    };
+
     const updateLoadingIframe = () => {
+        console.log("Updating loading iframe to 'longer-than-expected' message.");
         const loadingIframe = document.querySelector('.loading-container .loading-iframe');
         if (loadingIframe) {
             loadingIframe.src = 'https://gmg-digital.vercel.app/longer-than-expected';
             setTimeout(() => {
+                console.log("Reloading page after delay.");
                 window.location.reload();
             }, 3000);
         }
@@ -29,7 +47,9 @@
     const sheetdbCache = {};
 
     const fetchSheetData = async (sheetdbUrl, sheetdbSheet) => {
+        console.log(`Fetching data from SheetDB. Sheet: ${sheetdbSheet}`);
         if (sheetdbCache[sheetdbSheet]) {
+            console.log(`Cache hit for sheet: ${sheetdbSheet}`);
             return sheetdbCache[sheetdbSheet];
         }
         try {
@@ -37,6 +57,7 @@
             const response = await fetch(sheetdbRequestUrl);
             const data = await response.json();
             sheetdbCache[sheetdbSheet] = data;
+            console.log(`Data fetched successfully from SheetDB for sheet: ${sheetdbSheet}`);
             return data;
         } catch (error) {
             console.error(`Error fetching data for sheet: ${sheetdbSheet}`, error);
@@ -45,22 +66,25 @@
     };
 
     const updateElementContent = (element, data, make, model) => {
+        console.log(`Updating content for element based on make: ${make}, model: ${model}`);
         const matchingEntry = data.find(
             item => item.Make === make && item.Model === model && item.Expired === 'Active' && item.Status === 'Enabled'
         );
 
         if (matchingEntry) {
+            console.log(`Matching entry found for ${make} ${model}:`, matchingEntry);
             const keys = Object.keys(matchingEntry);
             keys.forEach(key => {
                 const placeholder = `{{${key}}}`;
                 if (element.innerHTML.includes(placeholder)) {
+                    console.log(`Replacing placeholder ${placeholder} with value: ${matchingEntry[key]}`);
                     element.innerHTML = element.innerHTML.replace(placeholder, matchingEntry[key]);
                 }
             });
 
-            // Handle Disclaimer specifically
             const disclaimerPlaceholder = '{{Disclaimer}}';
             if (matchingEntry.Disclaimer) {
+                console.log(`Replacing Disclaimer placeholder with value: ${matchingEntry.Disclaimer}`);
                 element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, matchingEntry.Disclaimer);
             } else {
                 element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, '');
@@ -68,7 +92,6 @@
             }
 
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
-
             element.style.whiteSpace = 'normal';
             element.style.wordBreak = 'keep-all';
             element.style.overflowWrap = 'break-word';
@@ -84,16 +107,16 @@
                 }
             `;
             document.head.appendChild(styleElement);
-
-            console.log(`Updated element content for ${make} ${model}: ${element.innerHTML}`);
+            console.log(`Style injected for responsive layout adjustments.`);
         } else {
+            console.warn(`No matching entry found for ${make} ${model}. Clearing placeholders.`);
             element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
-            console.log(`No matching data found for ${make} ${model}, setting placeholders to blank.`);
         }
     };
 
     const loadStaticContent = async (element, pageId, API) => {
         try {
+            console.log(`Loading static content for page ID: ${pageId}`);
             const normalizedPageId = pageId.replace(/^elementor-/, '');
             const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
             const data = await response.json();
@@ -104,9 +127,11 @@
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = data.content;
                 shadowRoot.appendChild(contentContainer);
+                console.log(`Content loaded for element with page ID: ${pageId}`);
 
                 if (data.styles) {
                     data.styles.forEach(styleUrl => {
+                        console.log(`Injecting stylesheet: ${styleUrl}`);
                         const link = document.createElement('link');
                         link.rel = 'stylesheet';
                         link.href = styleUrl;
@@ -116,6 +141,7 @@
 
                 if (data.scripts) {
                     data.scripts.forEach(scriptUrl => {
+                        console.log(`Injecting script: ${scriptUrl}`);
                         const script = document.createElement('script');
                         script.src = scriptUrl;
                         shadowRoot.appendChild(script);
@@ -135,6 +161,7 @@
                     }
                 `;
                 document.head.appendChild(styleElement);
+                console.log('Custom styles applied to shadow root.');
 
                 const loadingContainer = document.querySelector('.loading-container');
                 const hiddenContentContainer = document.querySelector('.hidden-content-container');
@@ -149,13 +176,13 @@
                     const sheetdbSearch = el.getAttribute('data-sheetdb-search');
 
                     if (sheetdbUrl && sheetdbSheet && sheetdbSearch) {
+                        console.log(`Fetching SheetDB data for element inside shadow root.`);
                         const searchParams = new URLSearchParams(sheetdbSearch);
                         const make = searchParams.get('Make');
                         const model = searchParams.get('Model');
 
                         if (make && model) {
                             const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
-
                             if (sheetData) {
                                 updateElementContent(el, sheetData, make, model);
                             }
@@ -163,10 +190,10 @@
 
                         if (el.innerHTML.includes('{{')) {
                             el.innerHTML = '';
-                            console.log(`Removed placeholders for element: ${el.outerHTML}`);
+                            console.log(`Removed unmatched placeholders for element: ${el.outerHTML}`);
                         }
                     } else {
-                        console.warn('Missing data-sheetdb-url, data-sheetdb-sheet, or data-sheetdb-search attribute for element:', el);
+                        console.warn('Missing data-sheetdb attributes for element:', el);
                     }
                 }
             } else {
@@ -175,6 +202,11 @@
         } catch (error) {
             console.error('Error loading static content:', error);
         }
+    };
+
+    const loadStaticContentDirectly = async (element, pageId) => {
+        console.log(`Fallback direct loading initiated for page ID: ${pageId}`);
+        await loadStaticContent(element, pageId, null);
     };
 
     const updateContent = () => {
@@ -200,14 +232,13 @@
 
     const API = await retryCreateAPI(maxRetries, 1000);
 
-       if (API) {
+    if (API) {
         API.subscribe('page-load-v1', ev => {
             const elementorDivs = document.querySelectorAll('[data-elementor-id]');
 
-            // New functionality for specific pages
             const loadScriptAfterContent = () => {
                 const script = document.createElement('script');
-                script.src = 'https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js'; // Replace with your actual script URL
+                script.src = 'https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js';
                 script.async = true;
                 document.head.appendChild(script);
                 console.log("Script loaded after dynamic content insertion.");
@@ -219,16 +250,14 @@
                 const loadContentPromises = Array.from(elementorDivs).map(async elementorDiv => {
                     const pageId = elementorDiv.getAttribute('data-elementor-id');
                     if (pageId) {
-                        return loadStaticContent
-                        (elementorDiv, pageId, API);
+                        return loadStaticContent(elementorDiv, pageId, API);
                     }
                 });
 
                 Promise.all(loadContentPromises).then(() => {
-                    loadScriptAfterContent(); // Call the script load after all content is inserted
+                    loadScriptAfterContent();
                 });
             } else {
-                // Standard handling for other pages
                 elementorDivs.forEach(elementorDiv => {
                     const pageId = elementorDiv.getAttribute('data-elementor-id');
                     if (pageId) {
