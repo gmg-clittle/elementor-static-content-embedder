@@ -80,36 +80,43 @@
       }
     });
 
-    let ctaLink = shadowRoot.querySelector('a[href^="#request-information-ev-form&model="]');
-    if (!ctaLink) {
-      ctaLink = shadowRoot.querySelector('a[href*="request-information-ev-form"]');
+    function findAndAttachCTA() {
+      let ctaLink = shadowRoot.querySelector('a[href^="#request-information-ev-form&make="]');
+      if (!ctaLink) {
+        ctaLink = shadowRoot.querySelector('a[href*="request-information-ev-form"]');
+        if (ctaLink) {
+          console.log("CTA link found using fallback selector:", ctaLink);
+        } else {
+          console.warn("CTA link not found in shadow DOM with either selector, retrying...");
+          setTimeout(findAndAttachCTA, 500); // Retry after 500ms if CTA link not found
+          return;
+        }
+      }
+
       if (ctaLink) {
-        console.log("CTA link found using fallback selector:", ctaLink);
-      } else {
-        console.error("CTA link not found in shadow DOM with either selector.");
+        ctaLink.addEventListener('click', (event) => {
+          event.preventDefault();
+          console.log("CTA link clicked");
+
+          const hash = ctaLink.getAttribute('href');
+          const hashParams = new URLSearchParams(hash.replace('#request-information-ev-form&', ''));
+          const model = hashParams.get('model');
+          const make = hashParams.get('make');
+          const ddcId = hashParams.get('ddcId');
+
+          console.log("Extracted parameters - Make:", make, "Model:", model, "DDC ID:", ddcId);
+
+          if (model && make) {
+            const iframeUrl = `https://gmg-digital.vercel.app/ev-info-request?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}${ddcId ? `&ddcId=${encodeURIComponent(ddcId)}` : ''}`;
+            openPopup(iframeUrl);
+          } else {
+            console.warn("Model or make parameter missing in CTA link hash.");
+          }
+        });
       }
     }
 
-    if (ctaLink) {
-      ctaLink.addEventListener('click', (event) => {
-        event.preventDefault();
-        console.log("CTA link clicked");
-
-        const hash = ctaLink.getAttribute('href');
-        const hashParams = new URLSearchParams(hash.replace('#request-information-ev-form&', ''));
-        const model = hashParams.get('model');
-        const ddcId = hashParams.get('ddcId');
-
-        console.log("Extracted parameters - Model:", model, "DDC ID:", ddcId);
-
-        if (model) {
-          const iframeUrl = `https://gmg-digital.vercel.app/ev-info-request?model=${encodeURIComponent(model)}${ddcId ? `&ddcId=${encodeURIComponent(ddcId)}` : ''}`;
-          openPopup(iframeUrl);
-        } else {
-          console.warn("Model parameter missing in CTA link hash.");
-        }
-      });
-    }
+    findAndAttachCTA(); // Initialize CTA link detection
   }
 
   function detectAndInitializePopup() {
@@ -118,8 +125,7 @@
       console.log("Shadow root detected in .elementor-content container");
       initializePopupDialog(container.shadowRoot);
     } else {
-      console.log("Shadow root not found immediately, setting up MutationObserver");
-
+      console.log("No shadow root detected on initial load.");
       const observer = new MutationObserver(() => {
         const container = document.querySelector('.elementor-content');
         if (container && container.shadowRoot) {
@@ -132,5 +138,5 @@
     }
   }
 
-  detectAndInitializePopup();
+  detectAndInitializePopup(); // Immediately run initialization
 })();
