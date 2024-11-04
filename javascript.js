@@ -44,6 +44,14 @@
         }
     };
 
+    const loadScriptAfterContent = (scriptUrl) => {
+        const script = document.createElement('script');
+        script.src = scriptUrl;
+        script.async = true;
+        document.head.appendChild(script);
+        console.log(`Script loaded: ${scriptUrl}`);
+    };
+
     const sheetdbCache = {};
 
     const fetchSheetData = async (sheetdbUrl, sheetdbSheet) => {
@@ -196,6 +204,9 @@
                         console.warn('Missing data-sheetdb attributes for element:', el);
                     }
                 }
+
+                // Load evModelInfoRequestPopup script after content is fully inserted
+                loadScriptAfterContent('https://assets.garberauto.com/assets/js/evModelInfoRequestPopup.js');
             } else {
                 console.error(`No content found for page ID ${normalizedPageId}`);
             }
@@ -236,14 +247,6 @@
         API.subscribe('page-load-v1', ev => {
             const elementorDivs = document.querySelectorAll('[data-elementor-id]');
 
-            const loadScriptAfterContent = () => {
-                const script = document.createElement('script');
-                script.src = 'https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js';
-                script.async = true;
-                document.head.appendChild(script);
-                console.log("Script loaded after dynamic content insertion.");
-            };
-
             if (ev.payload.pageName && ev.payload.pageName.startsWith("SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR")) {
                 console.log("Executing specific functionality for SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR pages...");
 
@@ -255,7 +258,9 @@
                 });
 
                 Promise.all(loadContentPromises).then(() => {
-                    loadScriptAfterContent();
+                    // Load both scripts after dynamic content insertion
+                    loadScriptAfterContent('https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js');
+                    loadScriptAfterContent('https://assets.garberauto.com/assets/js/evModelInfoRequestPopup.js');
                 });
             } else {
                 elementorDivs.forEach(elementorDiv => {
