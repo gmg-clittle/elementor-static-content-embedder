@@ -1,142 +1,275 @@
-(function () {
-  function initializePopupDialog(shadowRoot) {
-    console.log("Initializing popup dialog within shadow DOM");
+(async APILoader => {
+    const maxRetries = 2;
 
-    let popupDialog = shadowRoot.getElementById('popup-dialog');
-    if (!popupDialog) {
-      console.log("Popup dialog not found, creating new popup elements");
-
-      // Create the popup dialog container
-      popupDialog = document.createElement('div');
-      popupDialog.id = 'popup-dialog';
-      popupDialog.style.cssText = 'display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); justify-content: center; align-items: center; z-index: 99999;';
-
-      // Create dialog content container
-      const dialogContent = document.createElement('div');
-      dialogContent.id = 'dialog-content';
-      dialogContent.style.cssText = 'position: relative; width: 90%; max-width: 600px; height: 90%; background: white; border-radius: 8px; overflow: hidden;';
-
-      // Create the iframe for content
-      const iframe = document.createElement('iframe');
-      iframe.id = 'popup-iframe';
-      iframe.style.cssText = 'width: 100%; height: 100%; border: none;';
-      iframe.src = ''; // Set dynamically when opened
-
-      // Create the close button
-      const closeButton = document.createElement('button');
-      closeButton.id = 'close-popup';
-      closeButton.innerHTML = '&times;';
-      closeButton.style.cssText = 'position: absolute; top: 10px; right: 10px; background: none; color: black; border: none; font-size: 20px; cursor: pointer;';
-
-      // Append elements
-      dialogContent.appendChild(iframe);
-      dialogContent.appendChild(closeButton);
-      popupDialog.appendChild(dialogContent);
-      shadowRoot.appendChild(popupDialog);
-
-      console.log("Popup elements created and appended to shadow DOM");
-
-      // Event listener for the close button
-      closeButton.addEventListener('click', () => {
-        popupDialog.style.display = 'none';
-        iframe.src = ''; // Clear iframe source when closed
-        console.log("Popup closed via close button");
-      });
-
-      // Close popup when clicking outside dialog content
-      popupDialog.addEventListener('click', (event) => {
-        if (event.target === popupDialog) {
-          popupDialog.style.display = 'none';
-          iframe.src = ''; // Clear iframe source
-          console.log("Popup closed by clicking outside dialog");
+    const retryCreateAPI = async (retries, delay) => {
+        try {
+            console.log(`Attempting to create DDC API. Retries left: ${retries}`);
+            const API = await APILoader.create();
+            console.log('DDC API created successfully.');
+            return API;
+        } catch (error) {
+            if (retries === 0) {
+                console.error('Dealer.com API not available after multiple attempts:', error);
+                loadContentWithoutAPI(); // Fallback to direct content load
+                return null;
+            }
+            console.warn(`DDC API creation failed. Retrying in ${delay}ms... Retries left: ${retries - 1}`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return retryCreateAPI(retries - 1, delay * 2);
         }
-      });
-    }
+    };
 
-    function openPopup(url) {
-      console.log("Attempting to open popup with URL:", url);
-      popupDialog.style.display = 'flex';
-      const popupIframe = shadowRoot.getElementById('popup-iframe');
-      if (popupIframe) {
-        popupIframe.src = url;
-        console.log("Popup iframe URL set to:", url);
-      } else {
-        console.error("Popup iframe not found in shadow DOM.");
-      }
-    }
-
-    // Listen for a 'formSubmitted' message from the iframe
-    window.addEventListener('message', (event) => {
-      if (event.data && event.data.action === 'formSubmitted') {
-        console.log("Form submitted message received. Closing popup after 3 seconds.");
-        setTimeout(() => {
-          popupDialog.style.display = 'none';
-          const popupIframe = shadowRoot.getElementById('popup-iframe');
-          if (popupIframe) {
-            popupIframe.src = ''; // Clear iframe source when closed
-          }
-          console.log("Popup closed after successful form submission.");
-        }, 3000); // Close 3 seconds after form submission
-      }
-    });
-
-    function findAndAttachCTA() {
-      let ctaLink = shadowRoot.querySelector('a[href^="#request-information-ev-form&make="]');
-      if (!ctaLink) {
-        ctaLink = shadowRoot.querySelector('a[href*="request-information-ev-form"]');
-        if (ctaLink) {
-          console.log("CTA link found using fallback selector:", ctaLink);
-        } else {
-          console.warn("CTA link not found in shadow DOM with either selector, retrying...");
-          setTimeout(findAndAttachCTA, 500); // Retry after 500ms if CTA link not found
-          return;
-        }
-      }
-
-      if (ctaLink) {
-        ctaLink.addEventListener('click', (event) => {
-          event.preventDefault();
-          console.log("CTA link clicked");
-
-          const hash = ctaLink.getAttribute('href');
-          const hashParams = new URLSearchParams(hash.replace('#request-information-ev-form&', ''));
-          const model = hashParams.get('model');
-          const make = hashParams.get('make');
-          const ddcId = hashParams.get('ddcId');
-
-          console.log("Extracted parameters - Make:", make, "Model:", model, "DDC ID:", ddcId);
-
-          if (model && make) {
-            const iframeUrl = `https://gmg-digital.vercel.app/ev-info-request?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}${ddcId ? `&ddcId=${encodeURIComponent(ddcId)}` : ''}`;
-            openPopup(iframeUrl);
-          } else {
-            console.warn("Model or make parameter missing in CTA link hash.");
-          }
+    const loadContentWithoutAPI = () => {
+        console.log("Fallback mode activated: loading content directly without DDC API.");
+        const elementorDivs = document.querySelectorAll('[data-elementor-id]');
+        
+        elementorDivs.forEach(elementorDiv => {
+            const pageId = elementorDiv.getAttribute('data-elementor-id');
+            if (pageId) {
+                console.log(`Loading content for element with page ID: ${pageId} using fallback.`);
+                loadStaticContentDirectly(elementorDiv, pageId);
+            }
         });
-      }
-    }
+    };
 
-    findAndAttachCTA(); // Initialize CTA link detection
-  }
-
-  function detectAndInitializePopup() {
-    const container = document.querySelector('.elementor-content');
-    if (container && container.shadowRoot) {
-      console.log("Shadow root detected in .elementor-content container");
-      initializePopupDialog(container.shadowRoot);
-    } else {
-      console.log("No shadow root detected on initial load.");
-      const observer = new MutationObserver(() => {
-        const container = document.querySelector('.elementor-content');
-        if (container && container.shadowRoot) {
-          console.log("Shadow root detected by MutationObserver");
-          initializePopupDialog(container.shadowRoot);
-          observer.disconnect(); 
+    const updateLoadingIframe = () => {
+        console.log("Updating loading iframe to 'longer-than-expected' message.");
+        const loadingIframe = document.querySelector('.loading-container .loading-iframe');
+        if (loadingIframe) {
+            loadingIframe.src = 'https://gmg-digital.vercel.app/longer-than-expected';
+            setTimeout(() => {
+                console.log("Reloading page after delay.");
+                window.location.reload();
+            }, 3000);
         }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-  }
+    };
 
-  detectAndInitializePopup(); // Immediately run initialization
-})();
+    const loadScriptAfterContent = (scriptUrl) => {
+        const script = document.createElement('script');
+        script.src = scriptUrl;
+        script.async = true;
+        document.head.appendChild(script);
+        console.log(`Script loaded: ${scriptUrl}`);
+    };
+
+    const sheetdbCache = {};
+
+    const fetchSheetData = async (sheetdbUrl, sheetdbSheet) => {
+        console.log(`Fetching data from SheetDB. Sheet: ${sheetdbSheet}`);
+        if (sheetdbCache[sheetdbSheet]) {
+            console.log(`Cache hit for sheet: ${sheetdbSheet}`);
+            return sheetdbCache[sheetdbSheet];
+        }
+        try {
+            const sheetdbRequestUrl = `${sheetdbUrl}?sheet=${encodeURIComponent(sheetdbSheet)}`;
+            const response = await fetch(sheetdbRequestUrl);
+            const data = await response.json();
+            sheetdbCache[sheetdbSheet] = data;
+            console.log(`Data fetched successfully from SheetDB for sheet: ${sheetdbSheet}`);
+            return data;
+        } catch (error) {
+            console.error(`Error fetching data for sheet: ${sheetdbSheet}`, error);
+            return null;
+        }
+    };
+
+    const updateElementContent = (element, data, make, model) => {
+        console.log(`Updating content for element based on make: ${make}, model: ${model}`);
+        const matchingEntry = data.find(
+            item => item.Make === make && item.Model === model && item.Expired === 'Active' && item.Status === 'Enabled'
+        );
+
+        if (matchingEntry) {
+            console.log(`Matching entry found for ${make} ${model}:`, matchingEntry);
+            const keys = Object.keys(matchingEntry);
+            keys.forEach(key => {
+                const placeholder = `{{${key}}}`;
+                if (element.innerHTML.includes(placeholder)) {
+                    console.log(`Replacing placeholder ${placeholder} with value: ${matchingEntry[key]}`);
+                    element.innerHTML = element.innerHTML.replace(placeholder, matchingEntry[key]);
+                }
+            });
+
+            const disclaimerPlaceholder = '{{Disclaimer}}';
+            if (matchingEntry.Disclaimer) {
+                console.log(`Replacing Disclaimer placeholder with value: ${matchingEntry.Disclaimer}`);
+                element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, matchingEntry.Disclaimer);
+            } else {
+                element.innerHTML = element.innerHTML.replace(disclaimerPlaceholder, '');
+                console.log('Disclaimer placeholder removed due to missing content.');
+            }
+
+            element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
+            element.style.whiteSpace = 'normal';
+            element.style.wordBreak = 'keep-all';
+            element.style.overflowWrap = 'break-word';
+
+            const styleElement = document.createElement('style');
+            styleElement.innerHTML = `
+                @media (min-width: 769px) {
+                    [data-sheetdb-url] {
+                        white-space: normal;
+                        word-break: keep-all;
+                        overflow-wrap: break-word;
+                    }
+                }
+            `;
+            document.head.appendChild(styleElement);
+            console.log(`Style injected for responsive layout adjustments.`);
+        } else {
+            console.warn(`No matching entry found for ${make} ${model}. Clearing placeholders.`);
+            element.innerHTML = element.innerHTML.replace(/{{\w+}}/g, '');
+        }
+    };
+
+    const loadStaticContent = async (element, pageId, API) => {
+        try {
+            console.log(`Loading static content for page ID: ${pageId}`);
+            const normalizedPageId = pageId.replace(/^elementor-/, '');
+            const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
+            const data = await response.json();
+
+            if (data && data.content) {
+                const shadowRoot = element.attachShadow({ mode: 'open' });
+
+                const contentContainer = document.createElement('div');
+                contentContainer.innerHTML = data.content;
+                shadowRoot.appendChild(contentContainer);
+                console.log(`Content loaded for element with page ID: ${pageId}`);
+
+                if (data.styles) {
+                    data.styles.forEach(styleUrl => {
+                        console.log(`Injecting stylesheet: ${styleUrl}`);
+                        const link = document.createElement('link');
+                        link.rel = 'stylesheet';
+                        link.href = styleUrl;
+                        shadowRoot.appendChild(link);
+                    });
+                }
+
+                if (data.scripts) {
+                    data.scripts.forEach(scriptUrl => {
+                        console.log(`Injecting script: ${scriptUrl}`);
+                        const script = document.createElement('script');
+                        script.src = scriptUrl;
+                        shadowRoot.appendChild(script);
+                    });
+                }
+
+                const styleElement = document.createElement('style');
+                styleElement.innerHTML = `
+                    body, html {
+                        overflow-x: hidden !important;
+                    }
+                    .container-max-md.page-section.p-4.p-md-5.px-lg-6.px-xl-8 {
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        max-width: 100% !important;
+                        box-sizing: border-box !important;
+                    }
+                `;
+                document.head.appendChild(styleElement);
+                console.log('Custom styles applied to shadow root.');
+
+                const loadingContainer = document.querySelector('.loading-container');
+                const hiddenContentContainer = document.querySelector('.hidden-content-container');
+                if (loadingContainer) loadingContainer.style.display = 'none';
+                if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
+
+                console.log('Manually triggering SheetDB update for elements inside the shadow root...');
+                const sheetdbElements = shadowRoot.querySelectorAll('[data-sheetdb-url]');
+                for (const el of sheetdbElements) {
+                    const sheetdbUrl = el.getAttribute('data-sheetdb-url');
+                    const sheetdbSheet = el.getAttribute('data-sheetdb-sheet');
+                    const sheetdbSearch = el.getAttribute('data-sheetdb-search');
+
+                    if (sheetdbUrl && sheetdbSheet && sheetdbSearch) {
+                        console.log(`Fetching SheetDB data for element inside shadow root.`);
+                        const searchParams = new URLSearchParams(sheetdbSearch);
+                        const make = searchParams.get('Make');
+                        const model = searchParams.get('Model');
+
+                        if (make && model) {
+                            const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
+                            if (sheetData) {
+                                updateElementContent(el, sheetData, make, model);
+                            }
+                        }
+
+                        if (el.innerHTML.includes('{{')) {
+                            el.innerHTML = '';
+                            console.log(`Removed unmatched placeholders for element: ${el.outerHTML}`);
+                        }
+                    } else {
+                        console.warn('Missing data-sheetdb attributes for element:', el);
+                    }
+                }
+
+                // Load evModelInfoRequestPopup script after content is fully inserted
+                loadScriptAfterContent('https://assets.garberauto.com/assets/js/evModelInfoRequestPopup.js');
+            } else {
+                console.error(`No content found for page ID ${normalizedPageId}`);
+            }
+        } catch (error) {
+            console.error('Error loading static content:', error);
+        }
+    };
+
+    const loadStaticContentDirectly = async (element, pageId) => {
+        console.log(`Fallback direct loading initiated for page ID: ${pageId}`);
+        await loadStaticContent(element, pageId, null);
+    };
+
+    const updateContent = () => {
+        if (typeof window.sheetdb_upd === 'function') {
+            console.log('Triggering content update via sheetdb_upd()...');
+            try {
+                window.sheetdb_upd();
+                console.log('Content update triggered successfully.');
+            } catch (error) {
+                console.error('Error triggering content update via sheetdb_upd():', error);
+            }
+        } else {
+            console.error('sheetdb_upd() function is not available.');
+        }
+    };
+
+    window.updateContent = updateContent;
+
+    const hiddenContentContainer = document.querySelector('.hidden-content-container');
+    if (hiddenContentContainer) hiddenContentContainer.style.display = 'block';
+    const loadingContainer = document.querySelector('.loading-container');
+    if (loadingContainer) loadingContainer.style.display = 'block';
+
+    const API = await retryCreateAPI(maxRetries, 1000);
+
+    if (API) {
+        API.subscribe('page-load-v1', ev => {
+            const elementorDivs = document.querySelectorAll('[data-elementor-id]');
+
+            if (ev.payload.pageName && ev.payload.pageName.startsWith("SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR")) {
+                console.log("Executing specific functionality for SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR pages...");
+
+                const loadContentPromises = Array.from(elementorDivs).map(async elementorDiv => {
+                    const pageId = elementorDiv.getAttribute('data-elementor-id');
+                    if (pageId) {
+                        return loadStaticContent(elementorDiv, pageId, API);
+                    }
+                });
+
+                Promise.all(loadContentPromises).then(() => {
+                    // Load both scripts after dynamic content insertion
+                    loadScriptAfterContent('https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js');
+                    loadScriptAfterContent('https://assets.garberauto.com/assets/js/evModelInfoRequestPopup.js');
+                });
+            } else {
+                elementorDivs.forEach(elementorDiv => {
+                    const pageId = elementorDiv.getAttribute('data-elementor-id');
+                    if (pageId) {
+                        loadStaticContent(elementorDiv, pageId, API);
+                    }
+                });
+            }
+        });
+    }
+})(window.DDC.APILoader);
