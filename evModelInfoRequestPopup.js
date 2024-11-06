@@ -11,10 +11,26 @@
       popupDialog.id = 'popup-dialog';
       popupDialog.style.cssText = 'display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); justify-content: center; align-items: center; z-index: 99999;';
 
-      // Create dialog content container
+      // Create dialog content container with different height for desktop and mobile
       const dialogContent = document.createElement('div');
       dialogContent.id = 'dialog-content';
-      dialogContent.style.cssText = 'position: relative; width: 90%; max-width: 600px; height: 90%; background: white; border-radius: 8px; overflow: hidden;';
+      dialogContent.style.cssText = 'position: relative; width: 90%; max-width: 600px; background: white; border-radius: 8px; overflow: hidden;';
+
+      // Apply different height styles based on screen size
+      if (window.innerWidth > 768) {  // Desktop
+        dialogContent.style.height = '600px';
+      } else {  // Mobile
+        dialogContent.style.height = '90vh';
+      }
+
+      // Adjust height on window resize
+      window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) {
+          dialogContent.style.height = '600px';
+        } else {
+          dialogContent.style.height = '90vh';
+        }
+      });
 
       // Create the iframe for content
       const iframe = document.createElement('iframe');
@@ -80,6 +96,9 @@
       }
     });
 
+    let retryCount = 0;
+    const maxRetries = 5;
+
     function findAndAttachCTA() {
       let ctaLink = shadowRoot.querySelector('a[href^="#request-information-ev-form&make="]');
       if (!ctaLink) {
@@ -87,8 +106,13 @@
         if (ctaLink) {
           console.log("CTA link found using fallback selector:", ctaLink);
         } else {
-          console.warn("CTA link not found in shadow DOM with either selector, retrying...");
-          setTimeout(findAndAttachCTA, 500); // Retry after 500ms if CTA link not found
+          retryCount++;
+          if (retryCount < maxRetries) {
+            console.warn(`CTA link not found. Retrying... (${retryCount}/${maxRetries})`);
+            setTimeout(findAndAttachCTA, 500); // Retry after 500ms if CTA link not found
+          } else {
+            console.error("Max retries reached. Stopping attempts to find CTA link.");
+          }
           return;
         }
       }
