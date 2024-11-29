@@ -44,13 +44,31 @@
         }
     };
 
-    const loadScriptAfterContent = (scriptUrl) => {
-        const script = document.createElement('script');
-        script.src = scriptUrl;
-        script.async = true;
-        document.head.appendChild(script);
+const loadScriptAfterContent = (scriptUrl, callback) => {
+    const script = document.createElement('script');
+    script.src = scriptUrl;
+    script.async = true;
+    script.onload = () => {
         console.log(`Script loaded: ${scriptUrl}`);
+        if (callback) callback();
     };
+    script.onerror = () => {
+        console.error(`Failed to load script: ${scriptUrl}`);
+    };
+    document.head.appendChild(script);
+};
+
+    
+const loadEmbedSocialScript = () => {
+    loadScriptAfterContent('https://assets.garberauto.com/assets/js/embedSocial.js', () => {
+        if (typeof initializeEmbedSocial === 'function') {
+            console.log('Initializing EmbedSocial after script load...');
+            initializeEmbedSocial();
+        } else {
+            console.error('initializeEmbedSocial function is not available. Ensure the script is properly loaded.');
+        }
+    });
+};
 
     const sheetdbCache = {};
 
@@ -122,98 +140,100 @@
         }
     };
 
-    const loadStaticContent = async (element, pageId, API) => {
-        try {
-            console.log(`Loading static content for page ID: ${pageId}`);
-            const normalizedPageId = pageId.replace(/^elementor-/, '');
-            const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
-            const data = await response.json();
 
-            if (data && data.content) {
-                const shadowRoot = element.attachShadow({ mode: 'open' });
+const loadStaticContent = async (element, pageId, API) => {
+    try {
+        console.log(`Loading static content for page ID: ${pageId}`);
+        const normalizedPageId = pageId.replace(/^elementor-/, '');
+        const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
+        const data = await response.json();
 
-                const contentContainer = document.createElement('div');
-                contentContainer.innerHTML = data.content;
-                shadowRoot.appendChild(contentContainer);
-                console.log(`Content loaded for element with page ID: ${pageId}`);
+        if (data && data.content) {
+            const shadowRoot = element.attachShadow({ mode: 'open' });
 
-                if (data.styles) {
-                    data.styles.forEach(styleUrl => {
-                        console.log(`Injecting stylesheet: ${styleUrl}`);
-                        const link = document.createElement('link');
-                        link.rel = 'stylesheet';
-                        link.href = styleUrl;
-                        shadowRoot.appendChild(link);
-                    });
-                }
+            const contentContainer = document.createElement('div');
+            contentContainer.innerHTML = data.content;
+            shadowRoot.appendChild(contentContainer);
+            console.log(`Content loaded for element with page ID: ${pageId}`);
 
-                if (data.scripts) {
-                    data.scripts.forEach(scriptUrl => {
-                        console.log(`Injecting script: ${scriptUrl}`);
-                        const script = document.createElement('script');
-                        script.src = scriptUrl;
-                        shadowRoot.appendChild(script);
-                    });
-                }
-
-                const styleElement = document.createElement('style');
-                styleElement.innerHTML = `
-                    body, html {
-                        overflow-x: hidden !important;
-                    }
-                    .container-max-md.page-section.p-4.p-md-5.px-lg-6.px-xl-8 {
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        max-width: 100% !important;
-                        box-sizing: border-box !important;
-                    }
-                `;
-                document.head.appendChild(styleElement);
-                console.log('Custom styles applied to shadow root.');
-
-                const loadingContainer = document.querySelector('.loading-container');
-                const hiddenContentContainer = document.querySelector('.hidden-content-container');
-                if (loadingContainer) loadingContainer.style.display = 'none';
-                if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
-
-                console.log('Manually triggering SheetDB update for elements inside the shadow root...');
-                const sheetdbElements = shadowRoot.querySelectorAll('[data-sheetdb-url]');
-                for (const el of sheetdbElements) {
-                    const sheetdbUrl = el.getAttribute('data-sheetdb-url');
-                    const sheetdbSheet = el.getAttribute('data-sheetdb-sheet');
-                    const sheetdbSearch = el.getAttribute('data-sheetdb-search');
-
-                    if (sheetdbUrl && sheetdbSheet && sheetdbSearch) {
-                        console.log(`Fetching SheetDB data for element inside shadow root.`);
-                        const searchParams = new URLSearchParams(sheetdbSearch);
-                        const make = searchParams.get('Make');
-                        const model = searchParams.get('Model');
-
-                        if (make && model) {
-                            const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
-                            if (sheetData) {
-                                updateElementContent(el, sheetData, make, model);
-                            }
-                        }
-
-                        if (el.innerHTML.includes('{{')) {
-                            el.innerHTML = '';
-                            console.log(`Removed unmatched placeholders for element: ${el.outerHTML}`);
-                        }
-                    } else {
-                        console.warn('Missing data-sheetdb attributes for element:', el);
-                    }
-                }
-
-                // Load evModelInfoRequestPopup script after content is fully inserted
-                loadScriptAfterContent('https://assets.garberauto.com/assets/js/evModelInfoRequestPopup.js');
-            } else {
-                console.error(`No content found for page ID ${normalizedPageId}`);
+            if (data.styles) {
+                data.styles.forEach(styleUrl => {
+                    console.log(`Injecting stylesheet: ${styleUrl}`);
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = styleUrl;
+                    shadowRoot.appendChild(link);
+                });
             }
-        } catch (error) {
-            console.error('Error loading static content:', error);
+
+            if (data.scripts) {
+                data.scripts.forEach(scriptUrl => {
+                    console.log(`Injecting script: ${scriptUrl}`);
+                    const script = document.createElement('script');
+                    script.src = scriptUrl;
+                    shadowRoot.appendChild(script);
+                });
+            }
+
+            const styleElement = document.createElement('style');
+            styleElement.innerHTML = `
+                body, html {
+                    overflow-x: hidden !important;
+                }
+                .container-max-md.page-section.p-4.p-md-5.px-lg-6.px-xl-8 {
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                }
+            `;
+            document.head.appendChild(styleElement);
+            console.log('Custom styles applied to shadow root.');
+
+            const loadingContainer = document.querySelector('.loading-container');
+            const hiddenContentContainer = document.querySelector('.hidden-content-container');
+            if (loadingContainer) loadingContainer.style.display = 'none';
+            if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
+
+            console.log('Manually triggering SheetDB update for elements inside the shadow root...');
+            const sheetdbElements = shadowRoot.querySelectorAll('[data-sheetdb-url]');
+            for (const el of sheetdbElements) {
+                const sheetdbUrl = el.getAttribute('data-sheetdb-url');
+                const sheetdbSheet = el.getAttribute('data-sheetdb-sheet');
+                const sheetdbSearch = el.getAttribute('data-sheetdb-search');
+
+                if (sheetdbUrl && sheetdbSheet && sheetdbSearch) {
+                    console.log(`Fetching SheetDB data for element inside shadow root.`);
+                    const searchParams = new URLSearchParams(sheetdbSearch);
+                    const make = searchParams.get('Make');
+                    const model = searchParams.get('Model');
+
+                    if (make && model) {
+                        const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
+                        if (sheetData) {
+                            updateElementContent(el, sheetData, make, model);
+                        }
+                    }
+
+                    if (el.innerHTML.includes('{{')) {
+                        el.innerHTML = '';
+                        console.log(`Removed unmatched placeholders for element: ${el.outerHTML}`);
+                    }
+                } else {
+                    console.warn('Missing data-sheetdb attributes for element:', el);
+                }
+            }
+
+            // Load EmbedSocial script after content is fully inserted
+            loadEmbedSocialScript();
+
+        } else {
+            console.error(`No content found for page ID ${normalizedPageId}`);
         }
-    };
+    } catch (error) {
+        console.error('Error loading static content:', error);
+    }
+};
 
     const loadStaticContentDirectly = async (element, pageId) => {
         console.log(`Fallback direct loading initiated for page ID: ${pageId}`);
