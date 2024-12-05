@@ -70,6 +70,22 @@ const loadEmbedSocialScript = () => {
     });
 };
 
+const loadAccordionInitializationScript = () => {
+    loadScriptAfterContent('https://assets.garberauto.com/assets/js/initializeAccordion.js', () => {
+        if (typeof initializeAccordion === 'function') {
+            console.log('Initializing Accordion after script load...');
+            
+            // Select all elements with the class "elementor-content"
+            const shadowHosts = document.querySelectorAll('.elementor-content');
+            shadowHosts.forEach((shadowHost) => {
+                initializeAccordion(shadowHost);
+            });
+        } else {
+            console.error('initializeAccordion function is not available. Ensure the script is properly loaded.');
+        }
+    });
+};
+    
     const sheetdbCache = {};
 
     const fetchSheetData = async (sheetdbUrl, sheetdbSheet) => {
