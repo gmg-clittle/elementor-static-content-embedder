@@ -242,6 +242,8 @@ const loadStaticContent = async (element, pageId, API) => {
 
             // Load EmbedSocial script after content is fully inserted
             loadEmbedSocialScript();
+            // Load Accordion Initialization script after content is fully inserted
+            loadAccordionInitializationScript();
 
         } else {
             console.error(`No content found for page ID ${normalizedPageId}`);
