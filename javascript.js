@@ -85,6 +85,17 @@ const loadAccordionInitializationScript = () => {
         }
     });
 };
+
+const loadMobileMenuFixScript = () => {
+    loadScriptAfterContent('https://assets.garberauto.com/assets/js/mobileMenuFixScript.js', () => {
+        if (typeof initializeMobileMenuFixScript === 'function') {
+            console.log('Initializing Mobile Menu Fix Script after script load...');
+            initializeMobileMenuFixScript();
+        } else {
+            console.error('initializeMobileMenuFixScript function is not available. Ensure the script is properly loaded.');
+        }
+    });
+};
     
     const sheetdbCache = {};
 
@@ -244,6 +255,8 @@ const loadStaticContent = async (element, pageId, API) => {
             loadEmbedSocialScript();
             // Load Accordion Initialization script after content is fully inserted
             loadAccordionInitializationScript();
+            // Load Mobile Menu Fix Script after content is fully inserted
+            loadMobileMenuFixScript();
 
         } else {
             console.error(`No content found for page ID ${normalizedPageId}`);
