@@ -97,7 +97,7 @@ const loadMobileMenuFixScript = () => {
     });
 };
 
-    const initializeAnchorLinkFix = () => {
+    const loadAnchorLinkFixScript = () => {
     loadScriptAfterContent('https://assets.garberauto.com/assets/js/anchorLinkFix.js', () => {
         if (typeof initializeAnchorLinkFix === 'function') {
             console.log('Initializing Anchor Link Fix after script load...');
@@ -264,12 +264,15 @@ const loadStaticContent = async (element, pageId, API) => {
 
             // Load EmbedSocial script after content is fully inserted
             loadEmbedSocialScript();
+
             // Load Accordion Initialization script after content is fully inserted
             loadAccordionInitializationScript();
+
             // Load Mobile Menu Fix Script after content is fully inserted
             loadMobileMenuFixScript();
-            // Load Initialize Anchor Link Fix after content is fully inserted
-            initializeAnchorLinkFix();
+
+            // Load Anchor Link Fix script after content is fully inserted
+            loadAnchorLinkFixScript();
 
         } else {
             console.error(`No content found for page ID ${normalizedPageId}`);
@@ -278,6 +281,7 @@ const loadStaticContent = async (element, pageId, API) => {
         console.error('Error loading static content:', error);
     }
 };
+
 
     const loadStaticContentDirectly = async (element, pageId) => {
         console.log(`Fallback direct loading initiated for page ID: ${pageId}`);
