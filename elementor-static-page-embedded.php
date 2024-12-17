@@ -2,7 +2,7 @@
 /*
 Plugin Name: Elementor Static Content Embedder with Logging
 Description: Converts Elementor pages to static HTML/CSS/JS using wp_remote_get, saves them in the database, and provides an admin interface for managing and embedding them. Also includes logging for generation events.
-Version: 1.8
+Version: 1.9
 Author: Garber Digital Marketing Team
 */
 
@@ -417,8 +417,8 @@ function esc_remove_db() {
     $wpdb->query("DROP TABLE IF EXISTS $log_table_name");
 }
 
-// API route to serve static content
 add_action('rest_api_init', function () {
+    // Existing endpoint: Fetch static content by page ID
     register_rest_route('elementor/v1', '/static-content/(?P<id>\d+)', array(
         'methods' => 'GET',
         'callback' => 'esc_get_static_content',
@@ -430,7 +430,14 @@ add_action('rest_api_init', function () {
             ),
         ),
     ));
+
+    // New endpoint: Fetch all Elementor IDs with static content
+    register_rest_route('elementor/v1', '/static-content/all', array(
+        'methods' => 'GET',
+        'callback' => 'esc_get_all_static_content',
+    ));
 });
+
 
 // Callback function to serve static content via API
 function esc_get_static_content($data) {
@@ -455,4 +462,31 @@ function esc_get_static_content($data) {
         'notes' => $static_page->notes
     );
 }
+// Callback function to serve all static content with Elementor IDs
+function esc_get_all_static_content() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'elementor_static_content';
+
+    // Fetch all static content from the database
+    $static_pages = $wpdb->get_results("SELECT id, page_id, elementor_div_id, generated_at FROM $table_name");
+
+    // Check if data exists
+    if (empty($static_pages)) {
+        return new WP_Error('no_static_content', 'No static content found.', array('status' => 404));
+    }
+
+    // Build the response array
+    $response = array();
+    foreach ($static_pages as $page) {
+        $response[] = array(
+            'id' => $page->id,
+            'page_id' => $page->page_id,
+            'elementor_div_id' => $page->elementor_div_id,
+            'generated_at' => $page->generated_at,
+        );
+    }
+
+    return $response;
+}
+
 ?>
