@@ -107,6 +107,16 @@ const loadMobileMenuFixScript = () => {
         }
     });
 };
+    const loadEVModelInfoRequestPopupScript = () => {
+    loadScriptAfterContent('https://assets.garberauto.com/assets/js/evModelInfoRequestPopup.js', () => {
+        if (typeof initializePopupDialog === 'function') {
+            console.log('Initializing EV Model Info Request Popup Script after script load...');
+            initializePopupDialog();
+        } else {
+            console.error('initializePopupDialog function is not available. Ensure the script is properly loaded.');
+        }
+    });
+};
     
     const sheetdbCache = {};
 
@@ -273,6 +283,9 @@ const loadStaticContent = async (element, pageId, API) => {
 
             // Load Anchor Link Fix script after content is fully inserted
             loadAnchorLinkFixScript();
+            
+            // Load EV Model Info Requst Popup script after content is fully inserted
+            loadEVModelInfoRequestPopupScript();
 
         } else {
             console.error(`No content found for page ID ${normalizedPageId}`);
