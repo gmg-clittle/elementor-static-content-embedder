@@ -100,44 +100,35 @@
     const maxRetries = 5;
 
     function findAndAttachCTA() {
-      let ctaLink = shadowRoot.querySelector('a[href^="#request-information-ev-form&make="]');
-      if (!ctaLink) {
-        ctaLink = shadowRoot.querySelector('a[href*="request-information-ev-form"]');
-        if (ctaLink) {
-          console.log("CTA link found using fallback selector:", ctaLink);
+  // Get all anchor elements in the shadow root
+  const ctaLinks = shadowRoot.querySelectorAll('a');
+
+  ctaLinks.forEach((ctaLink) => {
+    const hrefValue = ctaLink.getAttribute('href');
+    if (hrefValue && hrefValue.startsWith('#request-information-ev-form')) {
+      console.log("CTA link found:", ctaLink);
+
+      // Attach the click event listener
+      ctaLink.addEventListener('click', (event) => {
+        event.preventDefault();
+        console.log("CTA link clicked:", ctaLink);
+
+        const hashParams = new URLSearchParams(hrefValue.replace('#request-information-ev-form&', ''));
+        const model = hashParams.get('model');
+        const make = hashParams.get('make');
+        const ddcId = hashParams.get('ddcId');
+
+        console.log("Extracted parameters - Make:", make, "Model:", model, "DDC ID:", ddcId);
+
+        if (model && make) {
+          const iframeUrl = `https://gmg-digital.vercel.app/ev-info-request?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}${ddcId ? `&ddcId=${encodeURIComponent(ddcId)}` : ''}`;
+          openPopup(iframeUrl);
         } else {
-          retryCount++;
-          if (retryCount < maxRetries) {
-            console.warn(`CTA link not found. Retrying... (${retryCount}/${maxRetries})`);
-            setTimeout(findAndAttachCTA, 500); // Retry after 500ms if CTA link not found
-          } else {
-            console.error("Max retries reached. Stopping attempts to find CTA link.");
-          }
-          return;
+          console.warn("Model or make parameter missing in CTA link hash.");
         }
-      }
-
-      if (ctaLink) {
-        ctaLink.addEventListener('click', (event) => {
-          event.preventDefault();
-          console.log("CTA link clicked");
-
-          const hash = ctaLink.getAttribute('href');
-          const hashParams = new URLSearchParams(hash.replace('#request-information-ev-form&', ''));
-          const model = hashParams.get('model');
-          const make = hashParams.get('make');
-          const ddcId = hashParams.get('ddcId');
-
-          console.log("Extracted parameters - Make:", make, "Model:", model, "DDC ID:", ddcId);
-
-          if (model && make) {
-            const iframeUrl = `https://gmg-digital.vercel.app/ev-info-request?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}${ddcId ? `&ddcId=${encodeURIComponent(ddcId)}` : ''}`;
-            openPopup(iframeUrl);
-          } else {
-            console.warn("Model or make parameter missing in CTA link hash.");
-          }
-        });
-      }
+      });
+    }
+  });
     }
 
     findAndAttachCTA(); // Initialize CTA link detection
