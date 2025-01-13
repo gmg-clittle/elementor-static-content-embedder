@@ -189,12 +189,41 @@ const loadMobileMenuFixScript = () => {
     };
 
 
+const webhookUrl = 'https://hook.us1.make.com/j0bg5rqky1jljb6qdo7l87ihoterb5of'; 
+
+const sendErrorToWebhook = async (errorDetails) => {
+    try {
+        console.log('Sending error details to webhook...', errorDetails);
+        await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(errorDetails),
+        });
+        console.log('Error details sent to webhook successfully.');
+    } catch (webhookError) {
+        console.error('Failed to send error details to webhook:', webhookError);
+    }
+};
+
 const loadStaticContent = async (element, pageId, API) => {
     try {
         console.log(`Loading static content for page ID: ${pageId}`);
         const normalizedPageId = pageId.replace(/^elementor-/, '');
         const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
         const data = await response.json();
+
+        if (response.status !== 200 || data.code === "no_page") {
+            const errorDetails = {
+                error: data.message || 'Unknown error',
+                status: response.status,
+                pageId: pageId,
+                pageUrl: window.location.href,
+                timestamp: new Date().toISOString(),
+            };
+            console.error('Error loading static content:', errorDetails);
+            await sendErrorToWebhook(errorDetails); // Send error to webhook
+            return;
+        }
 
         if (data && data.content) {
             const shadowRoot = element.attachShadow({ mode: 'open' });
@@ -272,28 +301,28 @@ const loadStaticContent = async (element, pageId, API) => {
                 }
             }
 
-            // Load EmbedSocial script after content is fully inserted
             loadEmbedSocialScript();
-
-            // Load Accordion Initialization script after content is fully inserted
             loadAccordionInitializationScript();
-
-            // Load Mobile Menu Fix Script after content is fully inserted
             loadMobileMenuFixScript();
-
-            // Load Anchor Link Fix script after content is fully inserted
             loadAnchorLinkFixScript();
-            
-            // Load EV Model Info Requst Popup script after content is fully inserted
             loadEVModelInfoRequestPopupScript();
 
         } else {
             console.error(`No content found for page ID ${normalizedPageId}`);
         }
     } catch (error) {
-        console.error('Error loading static content:', error);
+        const errorDetails = {
+            error: error.message || 'Unknown error',
+            stack: error.stack || '',
+            pageId: pageId,
+            pageUrl: window.location.href,
+            timestamp: new Date().toISOString(),
+        };
+        console.error('Error loading static content:', errorDetails);
+        await sendErrorToWebhook(errorDetails); // Send error to webhook
     }
 };
+
 
 
     const loadStaticContentDirectly = async (element, pageId) => {
