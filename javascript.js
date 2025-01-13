@@ -229,7 +229,7 @@ const displayErrorWidget = () => {
         const iframe = document.createElement('iframe');
         iframe.src = 'https://gmg-digital.vercel.app/widgets/error';
         iframe.style.width = '100%';
-        iframe.style.height = '400px';
+        iframe.style.height = '100%';
         iframe.style.border = 'none';
         iframe.style.display = 'block';
 
@@ -251,7 +251,23 @@ const loadStaticContent = async (element, pageId, API) => {
         const data = await response.json();
 
         // Handle errors in the response
-        if (response.status !== 200 || data.code === "no_page") {
+        if (response.status === 404) {
+            const errorDetails = {
+                error: data.message || 'Page not found',
+                status: response.status,
+                pageId: pageId,
+                pageUrl: window.location.href,
+                timestamp: new Date().toISOString(),
+            };
+            console.error('404 Error: Static content not found.', errorDetails);
+
+            // Send error details to webhook
+            await sendErrorToWebhook(errorDetails);
+
+            // Display error widget
+            displayErrorWidget();
+            return;
+        } else if (response.status !== 200) {
             const errorDetails = {
                 error: data.message || 'Unknown error',
                 status: response.status,
@@ -261,11 +277,8 @@ const loadStaticContent = async (element, pageId, API) => {
             };
             console.error('Error loading static content:', errorDetails);
 
-            // Send error details to webhook
+            // Send error details to webhook (but don't display the error widget)
             await sendErrorToWebhook(errorDetails);
-
-            // Display error widget
-            displayErrorWidget();
             return;
         }
 
@@ -369,8 +382,7 @@ const loadStaticContent = async (element, pageId, API) => {
         // Send error details to webhook
         await sendErrorToWebhook(errorDetails);
 
-        // Display error widget
-        displayErrorWidget();
+        // Do not display the error widget for other errors
     }
 };
 
