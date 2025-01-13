@@ -190,7 +190,6 @@ const loadMobileMenuFixScript = () => {
 
 
 const webhookUrl = 'https://hook.us1.make.com/j0bg5rqky1jljb6qdo7l87ihoterb5of'; 
-
 const sendErrorToWebhook = async (errorDetails) => {
     try {
         console.log('Sending error details to webhook...', errorDetails);
@@ -205,6 +204,51 @@ const sendErrorToWebhook = async (errorDetails) => {
     }
 };
 
+const displayErrorWidget = () => {
+    console.log('Displaying error widget iframe.');
+
+    // Select the loading-container and hidden-content-container elements by class
+    const loadingContainer = document.querySelector('.loading-container');
+    const hiddenContentContainer = document.querySelector('.hidden-content-container');
+
+    // Hide the hidden-content-container if it exists
+    if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
+
+    if (loadingContainer) {
+        // Ensure the loading-container takes up the full available space
+        loadingContainer.style.position = 'relative'; // Ensure it stays anchored
+        loadingContainer.style.width = '100%';
+        loadingContainer.style.height = '100vh'; // Full viewport height
+        loadingContainer.style.display = 'block';
+        loadingContainer.style.padding = '0';
+        loadingContainer.style.margin = '0';
+        loadingContainer.style.overflow = 'hidden'; // Prevent any overflow
+        loadingContainer.style.backgroundColor = '#fff'; // Optional: white background
+
+        // Create the iframe for the error widget
+        const iframe = document.createElement('iframe');
+        iframe.src = 'https://gmg-digital.vercel.app/widgets/error';
+        iframe.style.position = 'absolute';
+        iframe.style.top = '0';
+        iframe.style.left = '0';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.style.display = 'block';
+
+        // Clear existing content and append the iframe
+        loadingContainer.innerHTML = ''; // Clear existing content
+        loadingContainer.appendChild(iframe);
+
+        // Scroll to the loading-container to ensure it's fully visible
+        loadingContainer.scrollIntoView({ behavior: 'smooth' });
+
+        console.log('Error widget iframe successfully added to loading-container.');
+    } else {
+        console.error('loading-container not found. Ensure it exists with the correct class name.');
+    }
+};
+
 const loadStaticContent = async (element, pageId, API) => {
     try {
         console.log(`Loading static content for page ID: ${pageId}`);
@@ -212,6 +256,7 @@ const loadStaticContent = async (element, pageId, API) => {
         const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
         const data = await response.json();
 
+        // Handle errors in the response
         if (response.status !== 200 || data.code === "no_page") {
             const errorDetails = {
                 error: data.message || 'Unknown error',
@@ -221,10 +266,16 @@ const loadStaticContent = async (element, pageId, API) => {
                 timestamp: new Date().toISOString(),
             };
             console.error('Error loading static content:', errorDetails);
-            await sendErrorToWebhook(errorDetails); // Send error to webhook
+
+            // Send error details to webhook
+            await sendErrorToWebhook(errorDetails);
+
+            // Display error widget
+            displayErrorWidget();
             return;
         }
 
+        // Handle successful content loading
         if (data && data.content) {
             const shadowRoot = element.attachShadow({ mode: 'open' });
 
@@ -267,6 +318,7 @@ const loadStaticContent = async (element, pageId, API) => {
             document.head.appendChild(styleElement);
             console.log('Custom styles applied to shadow root.');
 
+            // Hide loading elements when content loads
             const loadingContainer = document.querySelector('.loading-container');
             const hiddenContentContainer = document.querySelector('.hidden-content-container');
             if (loadingContainer) loadingContainer.style.display = 'none';
@@ -301,12 +353,12 @@ const loadStaticContent = async (element, pageId, API) => {
                 }
             }
 
+            // Load additional scripts
             loadEmbedSocialScript();
             loadAccordionInitializationScript();
             loadMobileMenuFixScript();
             loadAnchorLinkFixScript();
             loadEVModelInfoRequestPopupScript();
-
         } else {
             console.error(`No content found for page ID ${normalizedPageId}`);
         }
@@ -319,10 +371,14 @@ const loadStaticContent = async (element, pageId, API) => {
             timestamp: new Date().toISOString(),
         };
         console.error('Error loading static content:', errorDetails);
-        await sendErrorToWebhook(errorDetails); // Send error to webhook
+
+        // Send error details to webhook
+        await sendErrorToWebhook(errorDetails);
+
+        // Display error widget
+        displayErrorWidget();
     }
 };
-
 
 
     const loadStaticContentDirectly = async (element, pageId) => {
