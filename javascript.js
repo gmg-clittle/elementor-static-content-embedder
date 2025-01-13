@@ -188,8 +188,8 @@ const loadMobileMenuFixScript = () => {
         }
     };
 
-
 const webhookUrl = 'https://hook.us1.make.com/j0bg5rqky1jljb6qdo7l87ihoterb5of'; 
+
 const sendErrorToWebhook = async (errorDetails) => {
     try {
         console.log('Sending error details to webhook...', errorDetails);
@@ -215,11 +215,11 @@ const displayErrorWidget = () => {
     if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
 
     if (loadingContainer) {
-        // Ensure the loading-container takes up the full available space
-        loadingContainer.style.position = 'relative'; // Ensure it stays anchored
-        loadingContainer.style.width = '100%';
-        loadingContainer.style.height = '100vh'; // Full viewport height
-        loadingContainer.style.display = 'block';
+        // Ensure the loading-container retains its position and dimensions
+        loadingContainer.style.position = 'relative'; // Keep it positioned relative to its parent
+        loadingContainer.style.width = '100%'; // Inherit width from its container
+        loadingContainer.style.height = '100%'; // Inherit height from its container
+        loadingContainer.style.display = 'block'; // Ensure it's visible
         loadingContainer.style.padding = '0';
         loadingContainer.style.margin = '0';
         loadingContainer.style.overflow = 'hidden'; // Prevent any overflow
@@ -228,20 +228,14 @@ const displayErrorWidget = () => {
         // Create the iframe for the error widget
         const iframe = document.createElement('iframe');
         iframe.src = 'https://gmg-digital.vercel.app/widgets/error';
-        iframe.style.position = 'absolute';
-        iframe.style.top = '0';
-        iframe.style.left = '0';
         iframe.style.width = '100%';
-        iframe.style.height = '100%';
+        iframe.style.height = '400px';
         iframe.style.border = 'none';
         iframe.style.display = 'block';
 
         // Clear existing content and append the iframe
         loadingContainer.innerHTML = ''; // Clear existing content
         loadingContainer.appendChild(iframe);
-
-        // Scroll to the loading-container to ensure it's fully visible
-        loadingContainer.scrollIntoView({ behavior: 'smooth' });
 
         console.log('Error widget iframe successfully added to loading-container.');
     } else {
@@ -379,6 +373,7 @@ const loadStaticContent = async (element, pageId, API) => {
         displayErrorWidget();
     }
 };
+
 
 
     const loadStaticContentDirectly = async (element, pageId) => {
