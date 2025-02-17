@@ -1,4 +1,4 @@
-function initializeYoutubeVideo() {
+function initializeYouTubeVideoFix() {
     try {
         console.log("Initializing YouTube Video functionality...");
 
