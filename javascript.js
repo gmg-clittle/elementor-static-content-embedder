@@ -117,6 +117,18 @@ const loadMobileMenuFixScript = () => {
         }
     });
 };
+
+    const loadYouTubeVideoFixScript = () => {
+    loadScriptAfterContent('https://assets.garberauto.com/assets/js/youtubeVideoFix.js', () => {
+        if (typeof initializeYouTubeVideoFix === 'function') {
+            console.log('Initializing YouTube Video Fix Script after script load...');
+            initializeYouTubeVideoFix();
+        } else {
+            console.error('initializeYouTubeVideoFix function is not available. Ensure the script is properly loaded.');
+        }
+    });
+};
+
     
     const sheetdbCache = {};
 
@@ -366,6 +378,7 @@ const loadStaticContent = async (element, pageId, API) => {
             loadMobileMenuFixScript();
             loadAnchorLinkFixScript();
             loadEVModelInfoRequestPopupScript();
+            loadYouTubeVideoFixScript();
         } else {
             console.error(`No content found for page ID ${normalizedPageId}`);
         }
