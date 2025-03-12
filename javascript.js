@@ -433,8 +433,8 @@ const loadStaticContent = async (element, pageId, API) => {
         API.subscribe('page-load-v1', ev => {
             const elementorDivs = document.querySelectorAll('[data-elementor-id]');
 
-            if (ev.payload.pageName && ev.payload.pageName.startsWith("SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR")) {
-                console.log("Executing specific functionality for SITEBUILDER_SEARCH_EV_CHARGING_STATIONS_NEAR pages...");
+                if (ev.payload.pageName && ev.payload.pageName.includes("CHARGING_STATIONS")) {
+                    console.log("Executing specific functionality for pages containing 'CHARGING_STATIONS'...");
 
                 const loadContentPromises = Array.from(elementorDivs).map(async elementorDiv => {
                     const pageId = elementorDiv.getAttribute('data-elementor-id');
