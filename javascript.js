@@ -1,3 +1,9 @@
+// Recommended: Ensure polyfills for fetch and URLSearchParams are loaded via script tags in your HTML.
+
+if (typeof URLSearchParams === 'undefined') {
+  console.warn('URLSearchParams is not supported. Please include a polyfill for older Safari versions.');
+}
+
 (async function(APILoader) {
     const maxRetries = 2;
 
@@ -73,8 +79,6 @@
         loadScriptAfterContent('https://assets.garberauto.com/assets/js/initializeAccordion.js', () => {
             if (typeof initializeAccordion === 'function') {
                 console.log('Initializing Accordion after script load...');
-                
-                // Select all elements with the class "elementor-content"
                 const shadowHosts = document.querySelectorAll('.elementor-content');
                 shadowHosts.forEach((shadowHost) => {
                     initializeAccordion(shadowHost);
@@ -150,6 +154,23 @@
         }
     };
 
+    // Helper to get query parameters; falls back if URLSearchParams is unsupported.
+    const getQueryParam = (search, key) => {
+        if (typeof URLSearchParams !== 'undefined') {
+            const params = new URLSearchParams(search);
+            return params.get(key);
+        } else {
+            const pairs = search.split('&');
+            for (let i = 0; i < pairs.length; i++) {
+                const pair = pairs[i].split('=');
+                if (decodeURIComponent(pair[0]) === key) {
+                    return decodeURIComponent(pair[1] || '');
+                }
+            }
+            return null;
+        }
+    };
+
     const updateElementContent = (element, data, make, model) => {
         console.log(`Updating content for element based on make: ${make}, model: ${model}`);
         const matchingEntry = data.find(
@@ -158,8 +179,7 @@
 
         if (matchingEntry) {
             console.log(`Matching entry found for ${make} ${model}:`, matchingEntry);
-            const keys = Object.keys(matchingEntry);
-            keys.forEach(key => {
+            Object.keys(matchingEntry).forEach(key => {
                 const placeholder = `{{${key}}}`;
                 if (element.innerHTML.includes(placeholder)) {
                     console.log(`Replacing placeholder ${placeholder} with value: ${matchingEntry[key]}`);
@@ -217,26 +237,21 @@
 
     const displayErrorWidget = () => {
         console.log('Displaying error widget iframe.');
-
-        // Select the loading-container and hidden-content-container elements by class
         const loadingContainer = document.querySelector('.loading-container');
         const hiddenContentContainer = document.querySelector('.hidden-content-container');
 
-        // Hide the hidden-content-container if it exists
         if (hiddenContentContainer) hiddenContentContainer.style.display = 'none';
 
         if (loadingContainer) {
-            // Ensure the loading-container retains its position and dimensions
-            loadingContainer.style.position = 'relative'; 
-            loadingContainer.style.width = '100%'; 
-            loadingContainer.style.height = '100%'; 
-            loadingContainer.style.display = 'block'; 
+            loadingContainer.style.position = 'relative';
+            loadingContainer.style.width = '100%';
+            loadingContainer.style.height = '100%';
+            loadingContainer.style.display = 'block';
             loadingContainer.style.padding = '0';
             loadingContainer.style.margin = '0';
-            loadingContainer.style.overflow = 'hidden'; 
-            loadingContainer.style.backgroundColor = '#fff'; 
+            loadingContainer.style.overflow = 'hidden';
+            loadingContainer.style.backgroundColor = '#fff';
 
-            // Create the iframe for the error widget
             const iframe = document.createElement('iframe');
             iframe.src = 'https://gmg-digital.vercel.app/widgets/error';
             iframe.style.width = '100%';
@@ -244,10 +259,8 @@
             iframe.style.border = 'none';
             iframe.style.display = 'block';
 
-            // Clear existing content and append the iframe
-            loadingContainer.innerHTML = ''; 
+            loadingContainer.innerHTML = '';
             loadingContainer.appendChild(iframe);
-
             console.log('Error widget iframe successfully added to loading-container.');
         } else {
             console.error('loading-container not found. Ensure it exists with the correct class name.');
@@ -261,7 +274,6 @@
             const response = await fetch(`https://digitalteamass.wpenginepowered.com/wp-json/elementor/v1/static-content/${normalizedPageId}`);
             const data = await response.json();
 
-            // Handle errors in the response
             if (response.status === 404) {
                 const errorDetails = {
                     error: data.message || 'Page not found',
@@ -271,11 +283,7 @@
                     timestamp: new Date().toISOString(),
                 };
                 console.error('404 Error: Static content not found.', errorDetails);
-
-                // Send error details to webhook
                 await sendErrorToWebhook(errorDetails);
-
-                // Display error widget
                 displayErrorWidget();
                 return;
             } else if (response.status !== 200) {
@@ -287,15 +295,18 @@
                     timestamp: new Date().toISOString(),
                 };
                 console.error('Error loading static content:', errorDetails);
-
-                // Send error details to webhook (but don't display the error widget)
                 await sendErrorToWebhook(errorDetails);
                 return;
             }
 
-            // Handle successful content loading
             if (data && data.content) {
-                const shadowRoot = element.attachShadow({ mode: 'open' });
+                let shadowRoot;
+                if (element.attachShadow) {
+                    shadowRoot = element.attachShadow({ mode: 'open' });
+                } else {
+                    console.warn("Shadow DOM not supported. Appending content directly.");
+                    shadowRoot = element;
+                }
 
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = data.content;
@@ -336,7 +347,6 @@
                 document.head.appendChild(styleElement);
                 console.log('Custom styles applied to shadow root.');
 
-                // Hide loading elements when content loads
                 const loadingContainer = document.querySelector('.loading-container');
                 const hiddenContentContainer = document.querySelector('.hidden-content-container');
                 if (loadingContainer) loadingContainer.style.display = 'none';
@@ -351,9 +361,8 @@
 
                     if (sheetdbUrl && sheetdbSheet && sheetdbSearch) {
                         console.log(`Fetching SheetDB data for element inside shadow root.`);
-                        const searchParams = new URLSearchParams(sheetdbSearch);
-                        const make = searchParams.get('Make');
-                        const model = searchParams.get('Model');
+                        const make = getQueryParam(sheetdbSearch, 'Make');
+                        const model = getQueryParam(sheetdbSearch, 'Model');
 
                         if (make && model) {
                             const sheetData = await fetchSheetData(sheetdbUrl, sheetdbSheet);
@@ -371,7 +380,6 @@
                     }
                 }
 
-                // Load additional scripts
                 loadEmbedSocialScript();
                 loadAccordionInitializationScript();
                 loadMobileMenuFixScript();
@@ -390,11 +398,7 @@
                 timestamp: new Date().toISOString(),
             };
             console.error('Error loading static content:', errorDetails);
-
-            // Send error details to webhook
             await sendErrorToWebhook(errorDetails);
-
-            // Do not display the error widget for other errors
         }
     };
 
@@ -441,7 +445,6 @@
                 });
 
                 Promise.all(loadContentPromises).then(() => {
-                    // Load both scripts after dynamic content insertion
                     loadScriptAfterContent('https://assets.garberauto.com/assets/js/charging-stations-widget-relocate.js');
                     loadScriptAfterContent('https://assets.garberauto.com/assets/js/evModelInfoRequestPopup.js');
                 });
